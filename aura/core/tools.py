@@ -129,18 +129,31 @@ def build_tool_schema(name: str, description: str, arguments_schema: dict[str, A
 
 GLOBAL_TOOL_REGISTRY = ToolRegistry()
 _BUILTIN_TOOLS_LOADED = False
+_BUILTIN_TOOLS_LOADING = False
 
 
 def ensure_builtin_tools_loaded() -> None:
     """Import built-in agent packages so their tools register themselves."""
 
-    global _BUILTIN_TOOLS_LOADED
+    global _BUILTIN_TOOLS_LOADED, _BUILTIN_TOOLS_LOADING
     if _BUILTIN_TOOLS_LOADED:
         return
-    import aura.agents.atlas.tools  # noqa: F401
-    import aura.agents.logos.tools  # noqa: F401
-    import aura.agents.echo.tools  # noqa: F401
-    _BUILTIN_TOOLS_LOADED = True
+    if _BUILTIN_TOOLS_LOADING:
+        return
+    _BUILTIN_TOOLS_LOADING = True
+    try:
+        import aura.agents.atlas.tools  # noqa: F401
+        import aura.agents.logos.tools  # noqa: F401
+        import aura.agents.echo.tools  # noqa: F401
+        import aura.memory.mneme.tools  # noqa: F401
+        import aura.browser.hermes.tools  # noqa: F401
+        import aura.agents.iris.tools  # noqa: F401
+        import aura.agents.aegis.tools  # noqa: F401
+        import aura.agents.director.tools  # noqa: F401
+        import aura.agents.phantom.tools  # noqa: F401
+        _BUILTIN_TOOLS_LOADED = True
+    finally:
+        _BUILTIN_TOOLS_LOADING = False
 
 
 def register_tool(

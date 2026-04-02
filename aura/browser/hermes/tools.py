@@ -318,8 +318,14 @@ def fill_form(page_id: str, fields: list[dict[str, Any]]) -> OperationResult:
     results = []
     for field in fields:
         selector = field.get("selector") or field.get("selector_or_description") or field.get("description")
-        if not _find_matches(page["html"], selector, field.get("description")):
+        field_type = field.get("field_type", "text")
+        matches = _find_matches(page["html"], selector, field.get("description"))
+        if not matches:
             return OperationResult(False, f"field not found: {selector}", {"page_id": page_id, "field": field})
+        if field_type == "file":
+            file_path = field.get("value") or field.get("file_path")
+            if file_path is not None and not Path(str(file_path)).exists():
+                return OperationResult(False, f"file not found: {file_path}", {"page_id": page_id, "field": field})
         results.append(field)
     result = OperationResult(True, "form filled", {"page_id": page_id, "fields": results})
     _emit("fill_form", page_id, page["url"], None, asdict(result))
@@ -445,10 +451,16 @@ def close_browser() -> OperationResult:
 
 def register_hermes_tools() -> None:
     registry = get_tool_registry()
+
+    def _click_tier(args: dict[str, Any]) -> int:
+        selector = f"{args.get('selector', '')} {args.get('description', '')}".lower()
+        destructive = {"confirm", "delete", "purchase", "submit"}
+        return 3 if any(word in selector for word in destructive) else 1
+
     specs = [
         ToolSpec("open_url", "Open a URL in a browser page.", 1, {"type": "object"}, {"type": "object"}, lambda args: open_url(args["url"], args.get("check_safety", True), args.get("wait_for", "load"))),
         ToolSpec("navigate", "Navigate an open page.", 1, {"type": "object"}, {"type": "object"}, lambda args: navigate(args["page_id"], args["url"])),
-        ToolSpec("click", "Click an element.", 1, {"type": "object"}, {"type": "object"}, lambda args: click(args["page_id"], args.get("selector"), args.get("description"))),
+        ToolSpec("click", "Click an element.", 1, {"type": "object"}, {"type": "object"}, lambda args: click(args["page_id"], args.get("selector"), args.get("description")), tier_resolver=_click_tier),
         ToolSpec("type_text", "Type text into an element.", 1, {"type": "object"}, {"type": "object"}, lambda args: type_text(args["page_id"], args.get("selector"), args.get("description"), args.get("text", ""), args.get("clear_first", True))),
         ToolSpec("fill_form", "Fill multiple form fields.", 1, {"type": "object"}, {"type": "object"}, lambda args: fill_form(args["page_id"], args.get("fields", []))),
         ToolSpec("scroll", "Scroll a page.", 1, {"type": "object"}, {"type": "object"}, lambda args: scroll(args["page_id"], args["direction"], args.get("amount", 300))),

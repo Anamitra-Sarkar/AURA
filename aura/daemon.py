@@ -23,6 +23,9 @@ from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_co
 from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
 from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
 from .memory import set_config as set_mneme_config, set_router as set_mneme_router
+from .agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
+from .agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
+from .agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
 
 
 @dataclass(slots=True)
@@ -37,6 +40,7 @@ class DaemonState:
     ipc_server: UnixSocketServer | None = None
     hotkey: GlobalHotkeyManager | None = None
     tray: TrayController | None = None
+    phantom_task: asyncio.Task[None] | None = None
 
 
 def _default_registry() -> ToolRegistry:
@@ -84,9 +88,20 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     set_echo_config(config)
     set_mneme_config(config)
     set_mneme_router(router)
+    set_aegis_config(config)
+    set_aegis_event_bus(event_bus)
+    set_director_config(config)
+    set_director_event_bus(event_bus)
+    set_director_router(router)
+    set_phantom_config(config)
+    set_phantom_event_bus(event_bus)
     register_atlas_tools()
     register_logos_tools()
     register_echo_tools()
+    register_aegis_tools()
+    register_director_tools()
+    register_phantom_tools()
+    resume_interrupted_workflows()
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
     tray = TrayController() if config.features.tray else None
@@ -114,6 +129,7 @@ async def run_forever(config_path: str | Path | None = None) -> None:
     """Run the daemon until cancelled."""
 
     state = await bootstrap(config_path)
+    phantom_task = asyncio.create_task(phantom_loop())
     if state.ipc_server is not None:
         await state.ipc_server.start()
     if state.hotkey is not None:
@@ -126,6 +142,7 @@ async def run_forever(config_path: str | Path | None = None) -> None:
     except asyncio.CancelledError:
         pass
     finally:
+        phantom_task.cancel()
         if state.hotkey is not None:
             state.hotkey.stop()
         if state.tray is not None:
