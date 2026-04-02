@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "AURA",
+    "offline_mode": true,
+    "log_level": "INFO"
+  },
+  "models": {
+    "primary": {
+      "provider": "ollama",
+      "name": "llama3.1:8b-instruct",
+      "host": "http://127.0.0.1:11434"
+    },
+    "fallbacks": [
+      {
+        "provider": "ollama",
+        "name": "mistral:7b-instruct",
+        "host": "http://127.0.0.1:11434"
+      },
+      {
+        "provider": "ollama",
+        "name": "qwen2:7b-instruct",
+        "host": "http://127.0.0.1:11434"
+      }
+    ]
+  },
+  "paths": {
+    "data_dir": "./var/data",
+    "log_dir": "./var/logs",
+    "memory_dir": "./var/memory",
+    "ipc_socket": "./var/run/aura.sock"
+  },
+  "features": {
+    "hotkey": true,
+    "tray": true,
+    "ipc": true,
+    "api": true
+  }
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=AURA daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/aura
+ExecStart=%h/.local/share/aura/.venv/bin/python -m aura.daemon
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
