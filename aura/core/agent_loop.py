@@ -27,6 +27,17 @@ class AgentLoopResult:
     answer: str | None = None
     steps: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
+    used_ensemble: bool = False
+    tools_called: list[str] = field(default_factory=list)
+    reasoning_used: bool = False
+
+
+@dataclass(slots=True)
+class _ModelTurn:
+    ok: bool
+    content: str | None
+    error: str | None
+    used_ensemble: bool = False
 
 
 class ReActAgentLoop:
@@ -40,7 +51,7 @@ class ReActAgentLoop:
         self.confirm_tier3 = confirm_tier3 or (lambda _tool, _args: False)
         self._config = load_config()
 
-    async def run(self, user_message: str) -> AgentLoopResult:
+    async def run(self, user_message: str, importance: int | None = None) -> AgentLoopResult:
         """Run the loop until a final answer is produced."""
 
         memory_context = ""
@@ -55,18 +66,18 @@ class ReActAgentLoop:
         ]
         steps: list[dict[str, Any]] = []
         for _ in range(self.max_steps):
-            model_result = await self._model_call(messages, user_message)
+            model_result = await self._model_call(messages, user_message, importance)
             if not model_result.ok or model_result.content is None:
-                return AgentLoopResult(ok=False, error=model_result.error or "model-error", steps=steps)
+                return AgentLoopResult(ok=False, error=model_result.error or "model-error", steps=steps, used_ensemble=model_result.used_ensemble)
             parsed = self._parse_response(model_result.content)
             if parsed.get("type") == "final":
                 answer = str(parsed.get("response", ""))
                 await self._maybe_voice_response(answer)
-                return AgentLoopResult(ok=True, answer=answer, steps=steps)
+                return AgentLoopResult(ok=True, answer=answer, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
             if parsed.get("type") != "tool":
                 answer = model_result.content
                 await self._maybe_voice_response(answer)
-                return AgentLoopResult(ok=True, answer=answer, steps=steps)
+                return AgentLoopResult(ok=True, answer=answer, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
             tool_name = str(parsed.get("tool", ""))
             arguments = parsed.get("arguments") or {}
             tier = 0
@@ -82,23 +93,35 @@ class ReActAgentLoop:
             if self.event_bus is not None:
                 await self.event_bus.publish("agent.tool", {"tool": tool_name, "result": self._tool_result_dict(tool_result)})
             if not tool_result.ok:
-                return AgentLoopResult(ok=False, error=tool_result.error, steps=steps)
+                return AgentLoopResult(ok=False, error=tool_result.error, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
             messages.append({"role": "assistant", "content": model_result.content})
             messages.append({"role": "tool", "content": json.dumps(self._tool_result_dict(tool_result), ensure_ascii=True)})
             if auto_extract_memories is not None:
                 asyncio.create_task(self._extract_memories(user_message, model_result.content))
-        return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps)
+        return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
 
-    async def _model_call(self, messages: list[dict[str, Any]], user_message: str):
-        importance = self._importance_level(user_message)
+    async def handle_message(self, user_message: str, importance: int | None = None) -> dict[str, Any]:
+        """Compatibility wrapper returning a UI-friendly result."""
+
+        result = await self.run(user_message, importance=importance)
+        return {
+            "response": result.answer or result.error or "",
+            "used_ensemble": result.used_ensemble,
+            "tools_called": result.tools_called,
+            "reasoning_used": result.reasoning_used,
+        }
+
+    async def _model_call(self, messages: list[dict[str, Any]], user_message: str, importance: int | None = None) -> _ModelTurn:
+        importance = importance if importance is not None else self._importance_level(user_message)
         ensemble = getattr(self._config, "ensemble", None)
         if ensemble is not None and ensemble.enabled and importance >= ensemble.default_importance_threshold:
             from aura.agents.ensemble.tools import ensemble_answer
 
             prompt = json.dumps(messages, ensure_ascii=True)
             result = await ensemble_answer(prompt, importance_level=importance, models=ensemble.models, context=None)
-            return type("LLMResultLike", (), {"ok": True, "content": result.synthesized_answer, "error": None})()
-        return await self.router.chat(messages)
+            return _ModelTurn(ok=True, content=result.synthesized_answer, error=None, used_ensemble=True)
+        result = await self.router.chat(messages)
+        return _ModelTurn(ok=result.ok, content=result.content, error=result.error, used_ensemble=False)
 
     async def _extract_memories(self, user_message: str, response: str) -> None:
         """Extract memories in the background without blocking the response."""
@@ -147,6 +170,11 @@ class ReActAgentLoop:
         if any(keyword in lowered for keyword in ["summarize", "explain", "summary"]):
             return 2
         return 1
+
+    @staticmethod
+    def _reasoning_used(steps: list[dict[str, Any]]) -> bool:
+        reasoning_tools = {"analyze_decision", "what_if_scenario", "devil_advocate", "explain_uncertainty", "ensemble_answer"}
+        return any(step.get("tool") in reasoning_tools for step in steps)
 
     @staticmethod
     def _parse_response(content: str) -> dict[str, Any]:

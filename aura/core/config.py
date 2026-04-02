@@ -74,6 +74,35 @@ class LyraSettings:
 
 
 @dataclass(slots=True)
+class UISettings:
+    """Optional Nexus UI configuration."""
+
+    enabled: bool
+    host: str
+    port: int
+    open_browser_on_start: bool
+
+
+@dataclass(slots=True)
+class StreamSourceConfig:
+    """Configured STREAM source entry."""
+
+    name: str
+    type: str
+    query: str
+
+
+@dataclass(slots=True)
+class StreamSettings:
+    """Optional world-awareness feed configuration."""
+
+    enabled: bool
+    fetch_interval_hours: int
+    min_relevance_score: float
+    sources: list[StreamSourceConfig]
+
+
+@dataclass(slots=True)
 class AppConfig:
     """Top-level AURA configuration."""
 
@@ -87,6 +116,8 @@ class AppConfig:
     source_path: Path
     ensemble: EnsembleSettings | None = None
     lyra: LyraSettings | None = None
+    ui: UISettings | None = None
+    stream: StreamSettings | None = None
 
 
 def _load_config_data(path: Path) -> dict[str, Any]:
@@ -129,6 +160,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     features = raw.get("features", {})
     ensemble = raw.get("ensemble", {})
     lyra = raw.get("lyra", {})
+    ui = raw.get("ui", {})
+    stream = raw.get("stream", {})
     source_base = config_path.parent.parent.resolve()
     primary = _model_from_dict(models["primary"])
     fallbacks = [_model_from_dict(entry) for entry in models.get("fallbacks", [])]
@@ -177,4 +210,20 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             save_audio=bool(lyra.get("save_audio", False)),
             noise_reduction=bool(lyra.get("noise_reduction", True)),
         ) if lyra is not None else None,
+        ui=UISettings(
+            enabled=bool(ui.get("enabled", True)),
+            host=str(ui.get("host", "127.0.0.1")),
+            port=int(ui.get("port", 7437)),
+            open_browser_on_start=bool(ui.get("open_browser_on_start", False)),
+        ) if ui is not None else None,
+        stream=StreamSettings(
+            enabled=bool(stream.get("enabled", True)),
+            fetch_interval_hours=int(stream.get("fetch_interval_hours", 6)),
+            min_relevance_score=float(stream.get("min_relevance_score", 0.4)),
+            sources=[
+                StreamSourceConfig(name=str(item.get("name", "")), type=str(item.get("type", "")), query=str(item.get("query", "")))
+                for item in stream.get("sources", [])
+                if isinstance(item, dict)
+            ],
+        ) if stream is not None else None,
     )

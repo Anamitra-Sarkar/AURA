@@ -55,6 +55,17 @@ class EventBus:
 
         async with self._lock:
             handlers = list(self._topics.get(topic, {}).values())
+            if topic != "*":
+                handlers.extend(self._topics.get("*", {}).values())
+            seen: set[int] = set()
+            unique_handlers: list[EventHandler] = []
+            for handler in handlers:
+                marker = id(handler)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                unique_handlers.append(handler)
+            handlers = unique_handlers
         delivered = 0
         errors: list[str] = []
         for handler in handlers:

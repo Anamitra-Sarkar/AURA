@@ -64,5 +64,23 @@
     "tts_volume": 0.9,
     "save_audio": false,
     "noise_reduction": true
+  },
+  "ui": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 7437,
+    "open_browser_on_start": false
+  },
+  "stream": {
+    "enabled": true,
+    "fetch_interval_hours": 6,
+    "min_relevance_score": 0.4,
+    "sources": [
+      {"name": "ArXiv AI/ML", "type": "arxiv", "query": "large language model transformer"},
+      {"name": "ArXiv Efficient Training", "type": "arxiv", "query": "LoRA fine-tuning efficient training"},
+      {"name": "HackerNews AI", "type": "hackernews", "query": "LLM machine learning"},
+      {"name": "PyTorch Releases", "type": "pypi", "query": "torch transformers"},
+      {"name": "Kaggle Competitions", "type": "kaggle", "query": ""}
+    ]
   }
 }

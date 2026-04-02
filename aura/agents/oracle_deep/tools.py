@@ -389,6 +389,12 @@ def explain_uncertainty(report_id: str) -> str:
     )
 
 
+def get_reasoning_report(report_id: str) -> ReasoningReport | None:
+    """Return a saved reasoning report by ID if it exists."""
+
+    return _load_report(report_id)
+
+
 def register_oracle_deep_tools() -> None:
     """Register ORACLE DEEP tools in the global registry."""
 
@@ -398,6 +404,7 @@ def register_oracle_deep_tools() -> None:
         ToolSpec("what_if_scenario", "Analyze a proposed change.", 1, {"type": "object"}, {"type": "object"}, lambda args: what_if_scenario(args["change_description"], args.get("base_state"), args.get("time_horizons"))),
         ToolSpec("devil_advocate", "Generate a counter-argument.", 1, {"type": "object"}, {"type": "object"}, lambda args: devil_advocate(args["claim"], args.get("context"))),
         ToolSpec("explain_uncertainty", "Explain reasoning uncertainty.", 1, {"type": "object"}, {"type": "string"}, lambda args: explain_uncertainty(args["report_id"])),
+        ToolSpec("get_reasoning_report", "Load a saved reasoning report.", 1, {"type": "object"}, {"type": "object"}, lambda args: get_reasoning_report(args["report_id"])),
     ]
     for spec in specs:
         try:

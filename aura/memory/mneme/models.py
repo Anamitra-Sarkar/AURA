@@ -15,6 +15,7 @@ ALLOWED_CATEGORIES = {
     "preferences",
     "tasks",
     "general",
+    "stream",
 }
 
 

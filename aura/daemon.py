@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,9 @@ try:  # pragma: no cover - import shim for script execution
     from .agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
     from .agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
     from .agents.lyra.tools import register_lyra_tools, set_config as set_lyra_config, set_event_bus as set_lyra_event_bus, start_wake_word_listener, stop_wake_word_listener
+    from .agents.stream.tools import register_stream_tools, set_config as set_stream_config, set_router as set_stream_router
+    from .agents.mosaic.tools import register_mosaic_tools, set_config as set_mosaic_config, set_router as set_mosaic_router
+    from .ui.server import configure_runtime as set_ui_runtime, start_server_task as start_ui_server_task
 except ImportError:  # pragma: no cover - direct script execution
     from aura.core.agent_loop import ReActAgentLoop
     from aura.core.config import AppConfig, load_config
@@ -49,6 +53,9 @@ except ImportError:  # pragma: no cover - direct script execution
     from aura.agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
     from aura.agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
     from aura.agents.lyra.tools import register_lyra_tools, set_config as set_lyra_config, set_event_bus as set_lyra_event_bus, start_wake_word_listener, stop_wake_word_listener
+    from aura.agents.stream.tools import register_stream_tools, set_config as set_stream_config, set_router as set_stream_router
+    from aura.agents.mosaic.tools import register_mosaic_tools, set_config as set_mosaic_config, set_router as set_mosaic_router
+    from aura.ui.server import configure_runtime as set_ui_runtime, start_server_task as start_ui_server_task
 
 
 @dataclass(slots=True)
@@ -64,6 +71,7 @@ class DaemonState:
     hotkey: GlobalHotkeyManager | None = None
     tray: TrayController | None = None
     phantom_task: asyncio.Task[None] | None = None
+    ui_task: asyncio.Task[None] | None = None
 
 
 def _default_registry() -> ToolRegistry:
@@ -120,6 +128,10 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     set_phantom_event_bus(event_bus)
     set_lyra_config(config)
     set_lyra_event_bus(event_bus)
+    set_stream_config(config)
+    set_stream_router(router)
+    set_mosaic_config(config)
+    set_mosaic_router(router)
     register_atlas_tools()
     register_logos_tools()
     register_echo_tools()
@@ -127,7 +139,10 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     register_director_tools()
     register_phantom_tools()
     register_lyra_tools()
+    register_stream_tools()
+    register_mosaic_tools()
     resume_interrupted_workflows()
+    set_ui_runtime(config, event_bus, agent_loop)
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
     tray = TrayController() if config.features.tray else None
@@ -156,8 +171,13 @@ async def run_forever(config_path: str | Path | None = None) -> None:
 
     state = await bootstrap(config_path)
     phantom_task = asyncio.create_task(phantom_loop())
-    lyra_token: str | None = None
+    ui_task: asyncio.Task[None] | None = None
     config = getattr(state, "config", None)
+    ui_config = getattr(config, "ui", None) if config is not None else None
+    if ui_config is not None and ui_config.enabled:
+        ui_task = start_ui_server_task()
+        state.ui_task = ui_task
+    lyra_token: str | None = None
     lyra_config = getattr(config, "lyra", None) if config is not None else None
     if lyra_config is not None and lyra_config.enabled:
         async def on_wake_word(_topic: str, payload: Any) -> None:
@@ -181,6 +201,11 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         pass
     finally:
         phantom_task.cancel()
+        ui_task = getattr(state, "ui_task", None)
+        if ui_task is not None:
+            ui_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await ui_task
         if lyra_config is not None and lyra_config.enabled:
             stop_wake_word_listener()
             if lyra_token is not None:

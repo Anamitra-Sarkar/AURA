@@ -4,6 +4,7 @@ from .models import ListenResult, OperationResult, SpeechConfig, TranscriptionRe
 from .tools import (
     get_available_voices,
     listen_once,
+    is_wake_word_listener_running,
     register_lyra_tools,
     set_config,
     set_event_bus,
@@ -24,6 +25,7 @@ __all__ = [
     "WakeWordConfig",
     "get_available_voices",
     "listen_once",
+    "is_wake_word_listener_running",
     "register_lyra_tools",
     "set_config",
     "set_event_bus",

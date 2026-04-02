@@ -1,7 +1,7 @@
 """ORACLE DEEP causal reasoning engine."""
 
 from .models import CounterArgument, ReasoningChain, ReasoningReport, ReasoningStep, ScenarioAnalysis, ScenarioOutcome
-from .tools import analyze_decision, devil_advocate, explain_uncertainty, register_oracle_deep_tools, set_config, set_router, what_if_scenario
+from .tools import analyze_decision, devil_advocate, explain_uncertainty, get_reasoning_report, register_oracle_deep_tools, set_config, set_router, what_if_scenario
 
 __all__ = [
     "CounterArgument",
@@ -13,6 +13,7 @@ __all__ = [
     "analyze_decision",
     "devil_advocate",
     "explain_uncertainty",
+    "get_reasoning_report",
     "register_oracle_deep_tools",
     "set_config",
     "set_router",

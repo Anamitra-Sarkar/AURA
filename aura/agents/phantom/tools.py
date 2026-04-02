@@ -26,6 +26,7 @@ _EVENT_BUS: EventBus = EventBus()
 _PAUSED = False
 _PAUSE_UNTIL: datetime | None = None
 _DEFAULT_TASKS_LOADED = False
+_REGISTERED_TASK_HANDLERS: dict[str, Callable[[], Any]] = {}
 
 
 class PhantomError(Exception):
@@ -207,11 +208,19 @@ def _get_state(key: str, default: str = "") -> str:
 
 def _task_next_run(schedule: str, last_run: datetime | None = None) -> datetime:
     base = last_run or _now()
+    if schedule.startswith("every:"):
+        try:
+            hours = float(schedule.split(":", 1)[1])
+            return base + timedelta(hours=hours)
+        except Exception:
+            return base + timedelta(hours=1)
     if schedule == "hourly":
         return base + timedelta(hours=1)
     if schedule == "weekly":
         return base + timedelta(days=7)
     if schedule == "daily":
+        return base + timedelta(days=1)
+    if schedule.startswith("daily@"):
         return base + timedelta(days=1)
     if schedule == "@startup":
         return base + timedelta(days=3650)
@@ -247,6 +256,7 @@ def _initial_watch_hash(target: str, type: str) -> str:
 
 
 def _trigger_watch_action(watch: WatchTarget, payload: dict[str, Any]) -> None:
+    _EVENT_BUS.publish_sync("phantom.watch_triggered", {"watch_id": watch.id, "watch": watch.name, **payload})
     if watch.on_change_action == "alert":
         send_notification(watch.name, json.dumps(payload, ensure_ascii=True))
     elif watch.on_change_action == "save_memory":
@@ -303,6 +313,8 @@ def _workflow_recovery() -> str:
 
 
 def _get_handler(name: str) -> Callable[[], Any]:
+    if name in _REGISTERED_TASK_HANDLERS:
+        return _REGISTERED_TASK_HANDLERS[name]
     if name == "generate_daily_briefing":
         return generate_daily_briefing
     if name == "mneme.consolidate_memory":
@@ -311,6 +323,15 @@ def _get_handler(name: str) -> Callable[[], Any]:
         return _system_health_check
     if name == "workflow_recovery":
         return _workflow_recovery
+    if "." in name:
+        module_name, _, attr = name.rpartition(".")
+        try:
+            module = __import__(module_name, fromlist=[attr])
+            handler = getattr(module, attr)
+            if callable(handler):
+                return handler
+        except Exception:
+            pass
     raise PhantomError(f"unknown handler: {name}")
 
 
@@ -387,6 +408,7 @@ def run_scheduled_tasks() -> list[str]:
         task.next_run = _task_next_run(task.schedule, task.last_run)
         _save_task(task)
         ran.append(task.name)
+        _EVENT_BUS.publish_sync("phantom.task_run", {"task_id": task.id, "name": task.name, "schedule": task.schedule})
     return ran
 
 
@@ -494,6 +516,34 @@ def list_workflows() -> list[PhantomTask]:
     with _connect() as connection:
         rows = connection.execute("SELECT * FROM tasks ORDER BY name ASC").fetchall()
     return [_row_to_task(row) for row in rows]
+
+
+def register_task(
+    task_name: str,
+    handler: Callable[[], Any],
+    interval_hours: int | None = None,
+    schedule: str | None = None,
+    run_on_startup: bool = False,
+    description: str | None = None,
+) -> PhantomTask:
+    """Register a reusable background task."""
+
+    _ensure_ready()
+    _REGISTERED_TASK_HANDLERS[task_name] = handler
+    task_schedule = schedule or (f"every:{interval_hours}" if interval_hours is not None else "hourly")
+    task = PhantomTask(
+        id=task_name,
+        name=task_name,
+        description=description or (handler.__doc__ or task_name),
+        schedule=task_schedule,
+        last_run=None,
+        next_run=_now() - timedelta(seconds=1) if run_on_startup else _task_next_run(task_schedule, _now()),
+        enabled=True,
+        handler_function=task_name,
+        config={"run_on_startup": run_on_startup, "interval_hours": interval_hours},
+    )
+    _save_task(task)
+    return task
 
 
 async def phantom_loop() -> None:

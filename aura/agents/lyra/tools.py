@@ -290,6 +290,12 @@ def stop_wake_word_listener() -> OperationResult:
     return OperationResult(True, "wake-word-listener-stopped", {})
 
 
+def is_wake_word_listener_running() -> bool:
+    """Return whether the wake-word listener task is active."""
+
+    return _WAKE_WORD_TASK is not None and not _WAKE_WORD_TASK.done()
+
+
 def set_voice_config(config: SpeechConfig) -> OperationResult:
     """Update the current TTS settings and persist them in MNEME."""
 

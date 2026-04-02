@@ -306,6 +306,7 @@ Tools:
 - **Phase 7:** Cleaned AEGIS imports and audit logging paths after the new system-control tests exposed unused dependencies.
 - **Phase 8:** Fixed workflow serialization and pause/resume races so paused workflows persist correctly without deadlocking.
 - **Phase 9:** Added deterministic Phantom test coverage for watch changes, briefing generation, recovery, and loop execution.
+- **Phase 13-15 integration:** Hardened `daemon.run_forever()` to tolerate bootstrap test doubles that omit `config` and `ui_task`, which kept the shutdown path reliable during the final regression pass.
 
 ## Phase 4 — MNEME (Memory Agent)
 
