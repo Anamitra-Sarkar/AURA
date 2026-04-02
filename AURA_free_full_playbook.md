@@ -161,7 +161,7 @@ Suggested monorepo layout:
 
 ## Phase 1 — ATLAS (File System Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — ATLAS file tools, models, registry integration, and tests implemented.
 
 ### Objective
 
@@ -198,12 +198,12 @@ Each tool must:
 
 ### Tasks Checklist
 
-- [ ] Design `FileMatch`, `FileContent`, `FileEntry` data models.
-- [ ] Implement keyword + extension filter search.
-- [ ] Integrate optional semantic search layer (e.g., local embedding model + Chroma index over filenames/paths).
-- [ ] Implement safe path handling (no directory traversal outside allowed roots).
-- [ ] Implement watch mechanism using `watchdog` for folder changes.
-- [ ] Add tests for each tool, including permission checks.
+- [x] Design `FileMatch`, `FileContent`, `FileEntry` data models.
+- [x] Implement keyword + extension filter search.
+- [x] Integrate optional semantic search layer (e.g., local embedding model + Chroma index over filenames/paths).
+- [x] Implement safe path handling (no directory traversal outside allowed roots).
+- [x] Implement watch mechanism using `watchdog` for folder changes.
+- [x] Add tests for each tool, including permission checks.
 
 ### AI Notes
 

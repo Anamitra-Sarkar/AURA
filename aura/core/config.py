@@ -27,6 +27,7 @@ class ModelSettings:
 class PathsSettings:
     """Filesystem locations used by AURA."""
 
+    allowed_roots: list[Path]
     data_dir: Path
     log_dir: Path
     memory_dir: Path
@@ -76,10 +77,13 @@ def _resolve_path(base: Path, raw_path: str) -> Path:
 
 
 def _model_from_dict(data: dict[str, Any]) -> ModelSettings:
+    host = data.get("host")
+    if host is None:
+        raise ValueError("Model configuration requires a host")
     return ModelSettings(
         provider=str(data["provider"]),
         name=str(data["name"]),
-        host=str(data.get("host", "http://127.0.0.1:11434")),
+        host=str(host),
     )
 
 
@@ -95,6 +99,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     source_base = config_path.parent.parent.resolve()
     primary = _model_from_dict(models["primary"])
     fallbacks = [_model_from_dict(entry) for entry in models.get("fallbacks", [])]
+    allowed_roots = [
+        _resolve_path(source_base, str(path))
+        for path in paths.get("allowed_roots", ["./", "./var/data"])
+    ]
     return AppConfig(
         name=str(app.get("name", "AURA")),
         offline_mode=bool(app.get("offline_mode", True)),
@@ -102,6 +110,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         primary_model=primary,
         fallback_models=fallbacks,
         paths=PathsSettings(
+            allowed_roots=allowed_roots,
             data_dir=_resolve_path(source_base, str(paths.get("data_dir", "./var/data"))),
             log_dir=_resolve_path(source_base, str(paths.get("log_dir", "./var/logs"))),
             memory_dir=_resolve_path(source_base, str(paths.get("memory_dir", "./var/memory"))),

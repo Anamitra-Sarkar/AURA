@@ -24,6 +24,10 @@
     ]
   },
   "paths": {
+    "allowed_roots": [
+      "./",
+      "./var/data"
+    ],
     "data_dir": "./var/data",
     "log_dir": "./var/logs",
     "memory_dir": "./var/memory",

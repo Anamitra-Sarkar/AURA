@@ -21,6 +21,11 @@ class ToolSpec:
     return_schema: dict[str, Any]
     handler: ToolHandler
 
+    def to_schema(self) -> dict[str, Any]:
+        """Return a JSON-schema-friendly representation of the tool."""
+
+        return build_tool_schema(self.name, self.description, self.arguments_schema, self.return_schema, self.tier)
+
 
 @dataclass(slots=True)
 class ToolCallResult:
@@ -83,6 +88,11 @@ class ToolRegistry:
 
         return list(self._tools.values())
 
+    def clear(self) -> None:
+        """Remove all registered tools."""
+
+        self._tools.clear()
+
     async def execute(self, name: str, arguments: dict[str, Any] | None = None, *, confirm: bool = False) -> ToolCallResult:
         """Execute a tool and enforce tier gates."""
 
@@ -111,3 +121,31 @@ def build_tool_schema(name: str, description: str, arguments_schema: dict[str, A
         "arguments": arguments_schema,
         "returns": return_schema,
     }
+
+
+GLOBAL_TOOL_REGISTRY = ToolRegistry()
+
+
+def register_tool(
+    *,
+    name: str,
+    description: str,
+    tier: Tier,
+    arguments_schema: dict[str, Any],
+    return_schema: dict[str, Any],
+) -> Callable[[ToolHandler], ToolHandler]:
+    """Register a tool in the global registry."""
+
+    return GLOBAL_TOOL_REGISTRY.decorator(
+        name=name,
+        description=description,
+        tier=tier,
+        arguments_schema=arguments_schema,
+        return_schema=return_schema,
+    )
+
+
+def get_tool_registry() -> ToolRegistry:
+    """Return the process-wide tool registry."""
+
+    return GLOBAL_TOOL_REGISTRY

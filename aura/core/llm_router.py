@@ -26,7 +26,7 @@ class LLMResult:
 class OllamaRouter:
     """Route chat requests to a configured local Ollama model."""
 
-    def __init__(self, model: str, host: str = "http://127.0.0.1:11434", client: Any | None = None) -> None:
+    def __init__(self, model: str, host: str = "", client: Any | None = None) -> None:
         self.model = model
         self.host = host
         self._client = client

@@ -19,6 +19,7 @@ from .core.llm_router import OllamaRouter
 from .core.logging import configure_logging, get_logger
 from .core.tools import ToolRegistry, ToolSpec
 from .core.tray import TrayController
+from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
 
 
 @dataclass(slots=True)
@@ -61,6 +62,9 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     registry = _default_registry()
     router = OllamaRouter(model=config.primary_model.name, host=config.primary_model.host)
     agent_loop = ReActAgentLoop(router=router, registry=registry, event_bus=event_bus)
+    set_atlas_config(config)
+    set_atlas_event_bus(event_bus)
+    register_atlas_tools()
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
     tray = TrayController() if config.features.tray else None
