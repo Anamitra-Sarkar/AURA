@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+import aura.daemon as daemon_module
 from aura.daemon import bootstrap, run_once
 
 
@@ -16,3 +19,48 @@ async def test_bootstrap_and_run_once(tmp_path):
     assert state.config.name == "AURA"
     result = await run_once(config_path)
     assert result["result"]["ok"] in {True, False}
+
+
+@pytest.mark.asyncio
+async def test_run_forever_cleans_up(monkeypatch):
+    class FakeComponent:
+        def __init__(self):
+            self.started = False
+            self.stopped = False
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            self.stopped = True
+
+    class FakeIPC:
+        async def start(self):
+            return None
+
+        async def stop(self):
+            return None
+
+    state = type(
+        "State",
+        (),
+        {
+            "ipc_server": FakeIPC(),
+            "hotkey": FakeComponent(),
+            "tray": FakeComponent(),
+        },
+    )()
+
+    async def fake_bootstrap(_path=None):
+        return state
+
+    monkeypatch.setattr(daemon_module, "bootstrap", fake_bootstrap)
+    monkeypatch.setattr("aura.daemon.phantom_loop", lambda: asyncio.sleep(0))
+
+    async def stop_sleep(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr("aura.daemon.asyncio.sleep", stop_sleep)
+    await asyncio.wait_for(daemon_module.run_forever(None), timeout=2)
+    assert state.hotkey.stopped is True
+    assert state.tray.stopped is True

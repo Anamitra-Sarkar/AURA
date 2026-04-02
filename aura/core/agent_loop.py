@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .event_bus import EventBus
+from .config import load_config
 from .llm_router import OllamaRouter
 from .tools import ToolCallResult, ToolRegistry
 
@@ -37,6 +38,7 @@ class ReActAgentLoop:
         self.event_bus = event_bus
         self.max_steps = max_steps
         self.confirm_tier3 = confirm_tier3 or (lambda _tool, _args: False)
+        self._config = load_config()
 
     async def run(self, user_message: str) -> AgentLoopResult:
         """Run the loop until a final answer is produced."""
@@ -53,7 +55,7 @@ class ReActAgentLoop:
         ]
         steps: list[dict[str, Any]] = []
         for _ in range(self.max_steps):
-            model_result = await self.router.chat(messages)
+            model_result = await self._model_call(messages, user_message)
             if not model_result.ok or model_result.content is None:
                 return AgentLoopResult(ok=False, error=model_result.error or "model-error", steps=steps)
             parsed = self._parse_response(model_result.content)
@@ -83,6 +85,17 @@ class ReActAgentLoop:
                 asyncio.create_task(self._extract_memories(user_message, model_result.content))
         return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps)
 
+    async def _model_call(self, messages: list[dict[str, Any]], user_message: str):
+        importance = self._importance_level(user_message)
+        ensemble = getattr(self._config, "ensemble", None)
+        if ensemble is not None and ensemble.enabled and importance >= ensemble.default_importance_threshold:
+            from aura.agents.ensemble.tools import ensemble_answer
+
+            prompt = json.dumps(messages, ensure_ascii=True)
+            result = await ensemble_answer(prompt, importance_level=importance, models=ensemble.models, context=None)
+            return type("LLMResultLike", (), {"ok": True, "content": result.synthesized_answer, "error": None})()
+        return await self.router.chat(messages)
+
     async def _extract_memories(self, user_message: str, response: str) -> None:
         """Extract memories in the background without blocking the response."""
 
@@ -108,6 +121,15 @@ class ReActAgentLoop:
         if memory_context:
             payload["memory_context"] = memory_context
         return json.dumps(payload, ensure_ascii=True)
+
+    @staticmethod
+    def _importance_level(message: str) -> int:
+        lowered = message.lower()
+        if any(keyword in lowered for keyword in ["code", "research", "decide", "decision", "plan", "workflow"]):
+            return 3
+        if any(keyword in lowered for keyword in ["summarize", "explain", "summary"]):
+            return 2
+        return 1
 
     @staticmethod
     def _parse_response(content: str) -> dict[str, Any]:

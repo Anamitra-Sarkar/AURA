@@ -38,5 +38,19 @@
     "tray": true,
     "ipc": true,
     "api": true
+  },
+  "ensemble": {
+    "enabled": true,
+    "default_importance_threshold": 2,
+    "models": [
+      "llama3.1:8b-instruct",
+      "mistral:7b-instruct",
+      "gemma2:9b-instruct",
+      "qwen2:7b-instruct"
+    ],
+    "judge_model": "llama3.1:8b-instruct",
+    "model_timeout_seconds": 60,
+    "min_successful_responses": 2,
+    "fallback_to_single": true
   }
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 
 import pytest
 
@@ -144,3 +145,45 @@ def test_git_status_diff_commit_and_push(monkeypatch, tmp_path):
     monkeypatch.setattr("aura.agents.logos.tools.subprocess.run", fake_run)
     push = git_push(str(repo))
     assert push.success is True
+
+
+@pytest.mark.asyncio
+async def test_logos_branch_paths(monkeypatch, tmp_path, atlas_config):
+    class ChatRouter:
+        async def chat(self, messages):
+            return {"message": {"content": "chat-ok"}}
+
+    set_router(ChatRouter())
+    try:
+        from aura.agents.logos import tools as logos_tools
+
+        def fake_run(*args, **kwargs):
+            command = args[0]
+            if command and command[0] == sys.executable:
+                raise subprocess.TimeoutExpired(cmd=command, timeout=1)
+            if command and command[0] == "git" and "commit" in command:
+                return subprocess.CompletedProcess(args=command, returncode=1, stdout="", stderr="commit failed")
+            if command and command[0] == "patch":
+                return subprocess.CompletedProcess(args=command, returncode=1, stdout="", stderr="patch failed")
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(logos_tools.subprocess, "run", fake_run)
+        monkeypatch.setattr(logos_tools.shutil, "which", lambda name: None)
+        monkeypatch.setattr(logos_tools, "detect_os", lambda: type("O", (), {"is_posix": True})())
+        monkeypatch.setattr("aura.agents.atlas.tools.read_file", lambda path: FileContent(path=path, content="print('old')\n", encoding="utf-8", size_bytes=10, modified_date="now", file_type="py"))
+
+        timeout_result = run_code("print('slow')", "python")
+        chat_fix = await debug_code("print('x')", "oops")
+        high = explain_code("print('x')", mode="high_level")
+        js_lint = lint_code("demo.js", "javascript")
+        fail_commit = git_commit(str(tmp_path), "msg")
+        bad_patch = apply_code_patch("bad patch", str(tmp_path / "missing.py"))
+
+        assert timeout_result.exit_code == 1
+        assert chat_fix.fixed_code == "print('x')"
+        assert high.mode == "high_level"
+        assert js_lint.total_count == 0
+        assert fail_commit.success is False
+        assert bad_patch.success is False
+    finally:
+        set_router(None)

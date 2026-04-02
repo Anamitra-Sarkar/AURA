@@ -45,6 +45,19 @@ class FeatureFlags:
 
 
 @dataclass(slots=True)
+class EnsembleSettings:
+    """Optional multi-model debate configuration."""
+
+    enabled: bool
+    default_importance_threshold: int
+    models: list[str]
+    judge_model: str
+    model_timeout_seconds: int
+    min_successful_responses: int
+    fallback_to_single: bool
+
+
+@dataclass(slots=True)
 class AppConfig:
     """Top-level AURA configuration."""
 
@@ -56,6 +69,7 @@ class AppConfig:
     paths: PathsSettings
     features: FeatureFlags
     source_path: Path
+    ensemble: EnsembleSettings | None = None
 
 
 def _load_config_data(path: Path) -> dict[str, Any]:
@@ -96,6 +110,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     models = raw.get("models", {})
     paths = raw.get("paths", {})
     features = raw.get("features", {})
+    ensemble = raw.get("ensemble", {})
     source_base = config_path.parent.parent.resolve()
     primary = _model_from_dict(models["primary"])
     fallbacks = [_model_from_dict(entry) for entry in models.get("fallbacks", [])]
@@ -123,4 +138,13 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             api=bool(features.get("api", True)),
         ),
         source_path=config_path,
+        ensemble=EnsembleSettings(
+            enabled=bool(ensemble.get("enabled", True)),
+            default_importance_threshold=int(ensemble.get("default_importance_threshold", 2)),
+            models=[str(model) for model in ensemble.get("models", [primary.name, *(model.name for model in fallbacks)])],
+            judge_model=str(ensemble.get("judge_model", primary.name)),
+            model_timeout_seconds=int(ensemble.get("model_timeout_seconds", 60)),
+            min_successful_responses=int(ensemble.get("min_successful_responses", 2)),
+            fallback_to_single=bool(ensemble.get("fallback_to_single", True)),
+        ) if ensemble is not None else None,
     )

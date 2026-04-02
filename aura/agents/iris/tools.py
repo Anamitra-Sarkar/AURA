@@ -17,7 +17,6 @@ import aura.browser.hermes as hermes
 from aura.core.config import AppConfig, load_config
 from aura.core.logging import get_logger
 from aura.core.tools import ToolSpec, get_tool_registry
-from aura.memory import list_memories, save_memory
 
 from .models import ComparativeSummary, FactCheckReport, PageContent, Paper, SearchResult, Summary
 
@@ -76,8 +75,15 @@ def set_router(router: Any | None) -> None:
     _ROUTER = router
 
 
+def _memory_tools() -> tuple[Any, Any]:
+    from aura.memory import list_memories, save_memory
+
+    return list_memories, save_memory
+
+
 
 def _memory_lookup(key: str) -> str | None:
+    list_memories, _ = _memory_tools()
     try:
         for record in list_memories(category="general", limit=50):
             if record.key == key:
@@ -106,6 +112,7 @@ def _cached_results(query: str) -> list[SearchResult] | None:
 
 
 def _store_cache(query: str, results: list[SearchResult]) -> None:
+    _, save_memory = _memory_tools()
     payload = {
         "cached_at": datetime.now(timezone.utc).isoformat(),
         "results": [asdict(item) for item in results],
@@ -220,6 +227,7 @@ def deep_research(query: str, max_rounds: int = 5, max_sources: int = 15) -> Com
         current_query = f"{query} details"
     synthesized = _synthesize(query, sources, "\n\n".join(collected))
     summary = ComparativeSummary(question=query, sources=sources, agreements=agreements, disagreements=disagreements, synthesized_answer=synthesized, confidence=0.7 if sources else 0.0)
+    _, save_memory = _memory_tools()
     try:
         save_memory(f"research:{query}", json.dumps({"question": query, "answer": synthesized, "sources": sources}), "general", tags=["research"], source="iris", confidence=0.9)
     except Exception:
@@ -258,6 +266,7 @@ def search_academic(query: str, source: str = "arxiv", max_results: int = 10) ->
             pass
     if papers and source == "arxiv":
         try:
+            _, save_memory = _memory_tools()
             for paper in papers:
                 save_memory(f"paper:{paper.title}", paper.abstract, "technical", tags=["paper"], source="iris", confidence=0.9)
         except Exception:
@@ -288,6 +297,7 @@ def summarize_content(content_or_url: str, style: str = "concise", length: str =
         source_url = "inline"
     summary_text, key_points = _summarize_text(text, length)
     result = Summary(source_url=source_url, original_length=len(text), summary_text=summary_text, style=style, key_points=key_points)
+    _, save_memory = _memory_tools()
     try:
         save_memory(f"summary:{source_url}", json.dumps({"summary": summary_text, "points": key_points}), "general", tags=["summary"], source="iris", confidence=0.8)
     except Exception:

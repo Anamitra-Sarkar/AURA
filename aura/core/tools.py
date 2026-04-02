@@ -151,6 +151,7 @@ def ensure_builtin_tools_loaded() -> None:
         import aura.agents.aegis.tools  # noqa: F401
         import aura.agents.director.tools  # noqa: F401
         import aura.agents.phantom.tools  # noqa: F401
+        import aura.agents.ensemble.tools  # noqa: F401
         _BUILTIN_TOOLS_LOADED = True
     finally:
         _BUILTIN_TOOLS_LOADING = False

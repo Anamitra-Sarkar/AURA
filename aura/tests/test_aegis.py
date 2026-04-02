@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -114,3 +115,74 @@ def test_system_and_process_helpers(monkeypatch, aegis_config):
     assert snapshot.ram_total_gb >= 0
     assert isinstance(aegis.list_processes(limit=5), list)
     assert aegis.get_process("missing-process") is None
+
+
+def test_aegis_branch_helpers(monkeypatch, aegis_config, tmp_path):
+    class Memory:
+        rss = 1024 * 1024 * 12
+
+    class Proc:
+        def __init__(self, pid, name):
+            self.pid = pid
+            self.info = {
+                "pid": pid,
+                "name": name,
+                "status": "running",
+                "cpu_percent": 2.5,
+                "memory_info": Memory(),
+                "create_time": datetime.now(timezone.utc).timestamp(),
+                "username": "tester",
+                "cmdline": ["sleep", "60"],
+            }
+
+    processes = [Proc(100, "alpha"), Proc(200, "beta")]
+    monkeypatch.setattr(aegis.psutil, "process_iter", lambda *_args, **_kwargs: processes)
+    monkeypatch.setattr(aegis.psutil, "boot_time", lambda: datetime.now(timezone.utc).timestamp() - 10)
+    monkeypatch.setattr(aegis.psutil, "virtual_memory", lambda: type("VM", (), {"total": 1024**3, "used": 512**2, "percent": 50.0})())
+    monkeypatch.setattr(aegis.psutil, "disk_usage", lambda _path: type("DU", (), {"total": 1024**3, "used": 256**2, "percent": 25.0})())
+    monkeypatch.setattr(aegis.psutil, "cpu_percent", lambda interval=0.1: 12.5)
+    monkeypatch.setattr(aegis.psutil, "cpu_count", lambda logical=True: 8)
+    monkeypatch.setattr(aegis.psutil, "net_if_stats", lambda: {"eth0": type("S", (), {"isup": True})()})
+    monkeypatch.setattr(aegis.psutil, "net_if_addrs", lambda: {"eth0": [type("A", (), {"family": object(), "address": "127.0.0.1"})()]})
+    monkeypatch.setattr(aegis.psutil, "net_connections", lambda kind="inet": [1, 2])
+    monkeypatch.setattr(aegis.psutil, "net_io_counters", lambda: type("C", (), {"bytes_sent": 1, "bytes_recv": 2})())
+
+    monkeypatch.setitem(sys.modules, "pyperclip", type("P", (), {"copy": staticmethod(lambda content: None), "paste": staticmethod(lambda: "clip")})())
+    monkeypatch.setitem(
+        sys.modules,
+        "mss",
+        type(
+            "M",
+            (),
+            {
+                "mss": type(
+                    "Ctx",
+                    (),
+                    {
+                        "__enter__": lambda self: self,
+                        "__exit__": lambda self, exc_type, exc, tb: None,
+                        "monitors": [{"top": 0, "left": 0, "width": 10, "height": 10}],
+                        "grab": lambda self, monitor: type("Img", (), {"rgb": b"x", "size": (1, 1)})(),
+                    },
+                ),
+                "tools": type("T", (), {"to_png": staticmethod(lambda *_args, **_kwargs: None)})(),
+            },
+        )(),
+    )
+
+    filtered = aegis.list_processes(sort_by="name", filter_name="a")
+    assert filtered and filtered[0].name == "alpha"
+    assert aegis.get_process("100").pid == 100
+    assert aegis.get_process("beta").name == "beta"
+    with pytest.raises(aegis.AegisError):
+        aegis.list_processes(sort_by="invalid")
+    assert aegis.clipboard_write("hello").success is True
+    assert aegis.clipboard_read().text == "clip"
+    path = aegis.take_screenshot(save_path=str(tmp_path / "shot.png"))
+    assert path.endswith("shot.png")
+    net = aegis.get_network_info()
+    assert net.connections_count == 2
+    assert net.interfaces and net.interfaces[0].name == "eth0"
+    assert aegis.get_environment_variable("MISSING") == ""
+    assert aegis.set_environment_variable("X", "1").success is True
+    assert aegis.get_environment_variable("X") == "1"

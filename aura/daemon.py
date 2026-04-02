@@ -10,22 +10,43 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .core.agent_loop import ReActAgentLoop
-from .core.config import AppConfig, load_config
-from .core.event_bus import EventBus
-from .core.hotkey import GlobalHotkeyManager
-from .core.ipc import UnixSocketServer
-from .core.llm_router import OllamaRouter
-from .core.logging import configure_logging, get_logger
-from .core.tools import ToolRegistry, ToolSpec, get_tool_registry
-from .core.tray import TrayController
-from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
-from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
-from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
-from .memory import set_config as set_mneme_config, set_router as set_mneme_router
-from .agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
-from .agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
-from .agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+try:  # pragma: no cover - import shim for script execution
+    from .core.agent_loop import ReActAgentLoop
+    from .core.config import AppConfig, load_config
+    from .core.event_bus import EventBus
+    from .core.hotkey import GlobalHotkeyManager
+    from .core.ipc import UnixSocketServer
+    from .core.llm_router import OllamaRouter
+    from .core.logging import configure_logging, get_logger
+    from .core.tools import ToolRegistry, ToolSpec, get_tool_registry
+    from .core.tray import TrayController
+    from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
+    from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
+    from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
+    from .memory import set_config as set_mneme_config, set_router as set_mneme_router
+    from .agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
+    from .agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
+    from .agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
+except ImportError:  # pragma: no cover - direct script execution
+    from aura.core.agent_loop import ReActAgentLoop
+    from aura.core.config import AppConfig, load_config
+    from aura.core.event_bus import EventBus
+    from aura.core.hotkey import GlobalHotkeyManager
+    from aura.core.ipc import UnixSocketServer
+    from aura.core.llm_router import OllamaRouter
+    from aura.core.logging import configure_logging, get_logger
+    from aura.core.tools import ToolRegistry, ToolSpec, get_tool_registry
+    from aura.core.tray import TrayController
+    from aura.agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
+    from aura.agents.logos.tools import register_logos_tools, set_router as set_logos_router
+    from aura.agents.echo.tools import register_echo_tools, set_config as set_echo_config
+    from aura.memory import set_config as set_mneme_config, set_router as set_mneme_router
+    from aura.agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
+    from aura.agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
+    from aura.agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
 
 
 @dataclass(slots=True)
