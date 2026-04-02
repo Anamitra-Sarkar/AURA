@@ -1,11 +1,7 @@
-"""Browser package."""
+"""HERMES browser agent."""
 
-from .hermes import (
-    DownloadResult,
-    ElementInfo,
-    ExtractedData,
-    OperationResult,
-    PageHandle,
+from .models import DownloadResult, ElementInfo, ExtractedData, OperationResult, PageHandle
+from .tools import (
     close_browser,
     close_page,
     click,
@@ -23,6 +19,7 @@ from .hermes import (
     type_text,
     upload_file,
     wait_for_element,
+    HermesError,
 )
 
 __all__ = [
@@ -31,6 +28,7 @@ __all__ = [
     "ExtractedData",
     "OperationResult",
     "PageHandle",
+    "HermesError",
     "close_browser",
     "close_page",
     "click",

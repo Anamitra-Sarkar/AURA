@@ -1,9 +1,7 @@
-"""AURA memory package."""
+"""MNEME long-term memory agent."""
 
-from .mneme import (
-    MemoryRecord,
-    RecallResult,
-    ConsolidationReport,
+from .models import ConsolidationReport, MemoryRecord, RecallResult
+from .tools import (
     auto_extract_memories,
     consolidate_memory,
     delete_memory,
@@ -18,9 +16,9 @@ from .mneme import (
 )
 
 __all__ = [
+    "ConsolidationReport",
     "MemoryRecord",
     "RecallResult",
-    "ConsolidationReport",
     "auto_extract_memories",
     "consolidate_memory",
     "delete_memory",

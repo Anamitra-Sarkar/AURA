@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -9,6 +10,12 @@ from typing import Any, Callable
 from .event_bus import EventBus
 from .llm_router import OllamaRouter
 from .tools import ToolCallResult, ToolRegistry
+
+try:
+    from aura.memory import inject_context, auto_extract_memories
+except Exception:  # pragma: no cover - memory package may not be available in minimal installs
+    inject_context = None  # type: ignore[assignment]
+    auto_extract_memories = None  # type: ignore[assignment]
 
 
 @dataclass(slots=True)
@@ -34,8 +41,14 @@ class ReActAgentLoop:
     async def run(self, user_message: str) -> AgentLoopResult:
         """Run the loop until a final answer is produced."""
 
+        memory_context = ""
+        if inject_context is not None:
+            try:
+                memory_context = inject_context(user_message)
+            except Exception:
+                memory_context = ""
         messages = [
-            {"role": "system", "content": self._system_prompt()},
+            {"role": "system", "content": self._system_prompt(memory_context)},
             {"role": "user", "content": user_message},
         ]
         steps: list[dict[str, Any]] = []
@@ -66,9 +79,21 @@ class ReActAgentLoop:
                 return AgentLoopResult(ok=False, error=tool_result.error, steps=steps)
             messages.append({"role": "assistant", "content": model_result.content})
             messages.append({"role": "tool", "content": json.dumps(self._tool_result_dict(tool_result), ensure_ascii=True)})
+            if auto_extract_memories is not None:
+                asyncio.create_task(self._extract_memories(user_message, model_result.content))
         return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps)
 
-    def _system_prompt(self) -> str:
+    async def _extract_memories(self, user_message: str, response: str) -> None:
+        """Extract memories in the background without blocking the response."""
+
+        if auto_extract_memories is None:
+            return
+        try:
+            await auto_extract_memories(user_message, response)
+        except Exception:
+            return
+
+    def _system_prompt(self, memory_context: str = "") -> str:
         tools = [
             {
                 "name": spec.name,
@@ -79,7 +104,10 @@ class ReActAgentLoop:
             }
             for spec in self.registry.list_tools()
         ]
-        return json.dumps({"instructions": "Respond with JSON: {type: 'tool'|'final', ...}", "tools": tools}, ensure_ascii=True)
+        payload = {"instructions": "Respond with JSON: {type: 'tool'|'final', ...}", "tools": tools}
+        if memory_context:
+            payload["memory_context"] = memory_context
+        return json.dumps(payload, ensure_ascii=True)
 
     @staticmethod
     def _parse_response(content: str) -> dict[str, Any]:

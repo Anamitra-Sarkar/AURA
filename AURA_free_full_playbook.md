@@ -300,10 +300,13 @@ Tools:
 - **Phase 0:** Added lazy builtin tool loading in `core/tools.py` so a fresh process sees the ATLAS, LOGOS, and ECHO tools without manual imports.
 - **Phase 0:** Normalized platform helpers in `core/platform.py` to expose `detect_os`, `open_file`, and `send_notification` while keeping compatibility aliases for earlier code paths.
 - **Phase 1-3 compatibility:** Kept `open_path` and `notify_user` aliases so existing tests and older call sites continue to work after the platform abstraction cleanup.
+- **Phase 4:** Broke the Mneme/ECHO circular import by making ECHO load `save_memory` lazily inside `set_reminder()`.
+- **Phase 5:** Added synchronous event publication support to `EventBus` so HERMES actions can be observed immediately from tests and replay consumers.
+- **Phase 6:** Fixed IRIS cache lookups to match exact `search:{query}` keys so cached search results are reused correctly.
 
 ## Phase 4 — MNEME (Memory Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — MNEME persistent memory, recall, consolidation, and background extraction implemented.
 
 ### Objective
 
@@ -332,11 +335,11 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Define memory schema (categories, tags, timestamps, source).
-- [ ] Implement embedding generation using a free local embedding model.
-- [ ] Implement recall with cosine similarity and scoring.
-- [ ] Implement automatic memory creation from conversations (opt-in).
-- [ ] Add tools to inspect and edit memories via UI.
+- [x] Define memory schema (categories, tags, timestamps, source).
+- [x] Implement embedding generation using a free local embedding model.
+- [x] Implement recall with cosine similarity and scoring.
+- [x] Implement automatic memory creation from conversations (opt-in).
+- [x] Add tools to inspect and edit memories via UI.
 
 ### AI Notes
 
@@ -347,7 +350,7 @@ Tools:
 
 ## Phase 5 — HERMES (Browser Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — HERMES browser automation, extraction, file transfer, and safety checks implemented.
 
 ### Objective
 
@@ -379,11 +382,11 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Initialize Playwright context with persistent profile.
-- [ ] Implement simple selector + text-based element targeting.
-- [ ] Implement optional URL safety check (e.g., free VirusTotal tier if within free limits).
-- [ ] Implement robust error handling and timeouts.
-- [ ] Log all actions for DIRECTOR replay.
+- [x] Initialize Playwright context with persistent profile.
+- [x] Implement simple selector + text-based element targeting.
+- [x] Implement optional URL safety check (e.g., free VirusTotal tier if within free limits).
+- [x] Implement robust error handling and timeouts.
+- [x] Log all actions for DIRECTOR replay.
 
 ### AI Notes
 
@@ -394,7 +397,7 @@ Tools:
 
 ## Phase 6 — IRIS (Research & Knowledge Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — IRIS search, fetch, summarization, fact-checking, and academic lookup implemented.
 
 ### Objective
 
@@ -419,10 +422,10 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Integrate a free web search API or meta-search on top of standard engines within ToS.
-- [ ] Implement HTML parsing and main-content extraction.
-- [ ] Implement citation extraction and formatting utilities.
-- [ ] Implement multi-hop research loop (query → read → refine → repeat).
+- [x] Integrate a free web search API or meta-search on top of standard engines within ToS.
+- [x] Implement HTML parsing and main-content extraction.
+- [x] Implement citation extraction and formatting utilities.
+- [x] Implement multi-hop research loop (query → read → refine → repeat).
 
 ### AI Notes
 

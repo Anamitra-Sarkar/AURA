@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -65,3 +66,27 @@ class EventBus:
             except Exception as exc:
                 errors.append(str(exc))
         return PublishResult(ok=not errors, topic=topic, delivered=delivered, errors=errors)
+
+    def publish_sync(self, topic: str, payload: Any) -> PublishResult:
+        """Synchronously publish a payload to all subscribers of a topic."""
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.publish(topic, payload))
+
+        result_holder: list[PublishResult] = []
+        error_holder: list[BaseException] = []
+
+        def _runner() -> None:
+            try:
+                result_holder.append(asyncio.run(self.publish(topic, payload)))
+            except BaseException as exc:  # pragma: no cover - thread boundary
+                error_holder.append(exc)
+
+        thread = threading.Thread(target=_runner, daemon=True)
+        thread.start()
+        thread.join()
+        if error_holder:
+            raise error_holder[0]
+        return result_holder[0]

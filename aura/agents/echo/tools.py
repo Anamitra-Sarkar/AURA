@@ -275,6 +275,19 @@ def set_reminder(text: str, trigger_time: str, repeat: str | None = None) -> Rem
         connection.commit()
     finally:
         connection.close()
+    try:
+        from aura.memory import save_memory
+
+        save_memory(
+            key=f"reminder:{reminder.id}",
+            value=text,
+            category="tasks",
+            tags=["reminder"],
+            source="echo",
+            confidence=1.0,
+        )
+    except Exception:
+        LOGGER.info("reminder-memory-sync-failed", extra={"reminder_id": reminder.id})
     notification = send_notification("AURA reminder", text)
     if not notification.ok:
         LOGGER.info("reminder-notification-fallback", extra={"message": notification.message, "text": text})
@@ -300,7 +313,7 @@ def get_upcoming_reminders(hours_ahead: int = 24) -> list[Reminder]:
 def join_meeting(link: str) -> OperationResult:
     """Open a meeting link using the platform default handler."""
 
-    result = open_file(link)
+    result = open_path(link)
     return OperationResult(result.ok, result.message, result.details)
 
 

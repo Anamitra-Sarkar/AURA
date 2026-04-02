@@ -22,6 +22,7 @@ from .core.tray import TrayController
 from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
 from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
 from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
+from .memory import set_config as set_mneme_config, set_router as set_mneme_router
 
 
 @dataclass(slots=True)
@@ -81,6 +82,8 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     set_atlas_event_bus(event_bus)
     set_logos_router(router)
     set_echo_config(config)
+    set_mneme_config(config)
+    set_mneme_router(router)
     register_atlas_tools()
     register_logos_tools()
     register_echo_tools()
