@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from aura.core.config import AppConfig, load_config
@@ -17,6 +17,20 @@ from .models import EnsembleResult, ModelResponse
 
 LOGGER = get_logger(__name__, component="ensemble")
 CONFIG: AppConfig = load_config()
+
+
+@dataclass(slots=True)
+class EnsembleTool:
+    """Metadata wrapper for an ENSEMBLE tool."""
+
+    name: str
+    description: str
+    tier: int
+    arguments_schema: dict[str, Any]
+    return_schema: dict[str, Any]
+
+    def to_spec(self, handler: Any) -> ToolSpec:
+        return ToolSpec(self.name, self.description, self.tier, self.arguments_schema, self.return_schema, handler)
 
 
 def set_config(config: AppConfig) -> None:
@@ -122,9 +136,9 @@ async def ensemble_answer(task: str, importance_level: int = 2, models: list[str
     synthesized = str(judge.get("synthesized_answer", ""))
     if disagreements:
         synthesized = f"{synthesized}\n\nNote: models disagreed on {', '.join(disagreements)}. Evidence suggests {agreements[0] if agreements else 'the judge synthesis'}."
-    return EnsembleResult(
-        task=task,
-        responses=responses,
+        return EnsembleResult(
+            task=task,
+            responses=responses,
         agreements=agreements,
         disagreements=disagreements,
         synthesized_answer=synthesized,
@@ -167,9 +181,9 @@ async def benchmark_models(test_prompt: str | None = None) -> dict[str, Any]:
 def register_ensemble_tools() -> None:
     registry = get_tool_registry()
     specs = [
-        ToolSpec("ensemble_answer", "Debate across multiple local models.", 1, {"type": "object"}, {"type": "object"}, lambda args: ensemble_answer(args["task"], args.get("importance_level", 2), args.get("models"), args.get("context"))),
-        ToolSpec("get_available_models", "List available local models.", 1, {"type": "object"}, {"type": "array"}, lambda _args: get_available_models()),
-        ToolSpec("benchmark_models", "Benchmark local models.", 1, {"type": "object"}, {"type": "object"}, lambda args: benchmark_models(args.get("test_prompt"))),
+        EnsembleTool("ensemble_answer", "Debate across multiple local models.", 1, {"type": "object"}, {"type": "object"}).to_spec(lambda args: ensemble_answer(args["task"], args.get("importance_level", 2), args.get("models"), args.get("context"))),
+        EnsembleTool("get_available_models", "List available local models.", 1, {"type": "object"}, {"type": "array"}).to_spec(lambda _args: get_available_models()),
+        EnsembleTool("benchmark_models", "Benchmark local models.", 1, {"type": "object"}, {"type": "object"}).to_spec(lambda args: benchmark_models(args.get("test_prompt"))),
     ]
     for spec in specs:
         try:
@@ -179,4 +193,3 @@ def register_ensemble_tools() -> None:
 
 
 register_ensemble_tools()
-

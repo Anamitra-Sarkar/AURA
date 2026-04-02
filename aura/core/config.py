@@ -58,6 +58,22 @@ class EnsembleSettings:
 
 
 @dataclass(slots=True)
+class LyraSettings:
+    """Optional voice interface configuration."""
+
+    enabled: bool
+    voice_mode: bool
+    stt_model: str
+    wake_word_engine: str
+    wake_phrase: str
+    wake_sensitivity: float
+    tts_rate: int
+    tts_volume: float
+    save_audio: bool
+    noise_reduction: bool
+
+
+@dataclass(slots=True)
 class AppConfig:
     """Top-level AURA configuration."""
 
@@ -70,6 +86,7 @@ class AppConfig:
     features: FeatureFlags
     source_path: Path
     ensemble: EnsembleSettings | None = None
+    lyra: LyraSettings | None = None
 
 
 def _load_config_data(path: Path) -> dict[str, Any]:
@@ -111,6 +128,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     paths = raw.get("paths", {})
     features = raw.get("features", {})
     ensemble = raw.get("ensemble", {})
+    lyra = raw.get("lyra", {})
     source_base = config_path.parent.parent.resolve()
     primary = _model_from_dict(models["primary"])
     fallbacks = [_model_from_dict(entry) for entry in models.get("fallbacks", [])]
@@ -147,4 +165,16 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             min_successful_responses=int(ensemble.get("min_successful_responses", 2)),
             fallback_to_single=bool(ensemble.get("fallback_to_single", True)),
         ) if ensemble is not None else None,
+        lyra=LyraSettings(
+            enabled=bool(lyra.get("enabled", True)),
+            voice_mode=bool(lyra.get("voice_mode", False)),
+            stt_model=str(lyra.get("stt_model", "base")),
+            wake_word_engine=str(lyra.get("wake_word_engine", "energy_threshold")),
+            wake_phrase=str(lyra.get("wake_phrase", "hey aura")),
+            wake_sensitivity=float(lyra.get("wake_sensitivity", 0.5)),
+            tts_rate=int(lyra.get("tts_rate", 175)),
+            tts_volume=float(lyra.get("tts_volume", 0.9)),
+            save_audio=bool(lyra.get("save_audio", False)),
+            noise_reduction=bool(lyra.get("noise_reduction", True)),
+        ) if lyra is not None else None,
     )

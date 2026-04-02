@@ -52,5 +52,17 @@
     "model_timeout_seconds": 60,
     "min_successful_responses": 2,
     "fallback_to_single": true
+  },
+  "lyra": {
+    "enabled": true,
+    "voice_mode": false,
+    "stt_model": "base",
+    "wake_word_engine": "energy_threshold",
+    "wake_phrase": "hey aura",
+    "wake_sensitivity": 0.5,
+    "tts_rate": 175,
+    "tts_volume": 0.9,
+    "save_audio": false,
+    "noise_reduction": true
   }
 }

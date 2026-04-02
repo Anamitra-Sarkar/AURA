@@ -573,7 +573,7 @@ Tools/services:
 
 ## Phase 10 — ENSEMBLE (Multi-Model Debate Engine)
 
-**Status:** NOT_STARTED
+**Status:** DONE — ENSEMBLE debate engine, package exports, config wiring, agent-loop routing, and tests implemented.
 
 ### Objective
 
@@ -600,10 +600,10 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Define importance levels and thresholds.
-- [ ] Implement parallel model invocation using the router.
-- [ ] Implement judge component (can be one of the same models) to synthesize.
-- [ ] Integrate confidence scoring.
+- [x] Define importance levels and thresholds.
+- [x] Implement parallel model invocation using the router.
+- [x] Implement judge component (can be one of the same models) to synthesize.
+- [x] Integrate confidence scoring.
 
 ### AI Notes
 
@@ -614,7 +614,7 @@ Tools:
 
 ## Phase 11 — ORACLE DEEP (Causal Reasoning Engine)
 
-**Status:** NOT_STARTED
+**Status:** DONE — ORACLE DEEP reasoning chains, scenario analysis, counter-arguments, persistence, and Ensemble integration implemented.
 
 ### Objective
 
@@ -643,10 +643,10 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Define ReasoningReport schema.
-- [ ] Implement chain-of-thought style internal reasoning (not exposed fully to user by default).
-- [ ] Implement uncertainty quantification (low/medium/high + reason).
-- [ ] Implement counter-argument generation.
+- [x] Define ReasoningReport schema.
+- [x] Implement chain-of-thought style internal reasoning (not exposed fully to user by default).
+- [x] Implement uncertainty quantification (low/medium/high + reason).
+- [x] Implement counter-argument generation.
 
 ### AI Notes
 
@@ -657,7 +657,7 @@ Tools:
 
 ## Phase 12 — LYRA (Voice Interface)
 
-**Status:** NOT_STARTED
+**Status:** DONE — LYRA local STT/TTS, wake-word listening, markdown stripping, and daemon/agent-loop integration implemented.
 
 ### Objective
 
@@ -685,10 +685,10 @@ Tools/services:
 
 ### Tasks Checklist
 
-- [ ] Integrate Whisper for STT (local model files).
-- [ ] Integrate free local TTS engine.
-- [ ] Implement wake word detection using a free library (e.g., Porcupine if license allows, or alternative).
-- [ ] Handle interruptions (stop speaking on user input).
+- [x] Integrate Whisper for STT (local model files).
+- [x] Integrate free local TTS engine.
+- [x] Implement wake word detection using a free library (e.g., Porcupine if license allows, or alternative).
+- [x] Handle interruptions (stop speaking on user input).
 
 ### AI Notes
 

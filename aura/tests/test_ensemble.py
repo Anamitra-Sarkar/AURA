@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import aura.agents.ensemble as ensemble_pkg
 import aura.agents.ensemble.tools as ensemble
 from aura.core.config import AppConfig, EnsembleSettings, FeatureFlags, ModelSettings, PathsSettings
 
@@ -83,3 +84,8 @@ async def test_available_models_and_benchmark(monkeypatch, ensemble_config):
 def test_confidence_score_formula():
     assert ensemble._confidence_score(3, 3, 3) == pytest.approx(1.0)
     assert ensemble._confidence_score(1, 4, 3) < ensemble._confidence_score(3, 3, 3)
+
+
+def test_package_exports():
+    assert ensemble_pkg.EnsembleTool.__name__ == "EnsembleTool"
+    assert ensemble_pkg.ImportanceLevel.HIGH == 3

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import IntEnum
 
 
 @dataclass(slots=True)
@@ -32,3 +33,11 @@ class EnsembleResult:
     judge_model: str = ""
     total_latency_ms: int = 0
 
+
+class ImportanceLevel(IntEnum):
+    """Importance levels used to decide when ENSEMBLE should engage."""
+
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4

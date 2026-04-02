@@ -30,6 +30,7 @@ try:  # pragma: no cover - import shim for script execution
     from .agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
     from .agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
     from .agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
+    from .agents.lyra.tools import register_lyra_tools, set_config as set_lyra_config, set_event_bus as set_lyra_event_bus, start_wake_word_listener, stop_wake_word_listener
 except ImportError:  # pragma: no cover - direct script execution
     from aura.core.agent_loop import ReActAgentLoop
     from aura.core.config import AppConfig, load_config
@@ -47,6 +48,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from aura.agents.aegis.tools import register_aegis_tools, set_config as set_aegis_config, set_event_bus as set_aegis_event_bus
     from aura.agents.director.tools import register_director_tools, set_config as set_director_config, set_event_bus as set_director_event_bus, set_router as set_director_router, resume_interrupted_workflows
     from aura.agents.phantom.tools import register_phantom_tools, set_config as set_phantom_config, set_event_bus as set_phantom_event_bus, phantom_loop
+    from aura.agents.lyra.tools import register_lyra_tools, set_config as set_lyra_config, set_event_bus as set_lyra_event_bus, start_wake_word_listener, stop_wake_word_listener
 
 
 @dataclass(slots=True)
@@ -116,12 +118,15 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     set_director_router(router)
     set_phantom_config(config)
     set_phantom_event_bus(event_bus)
+    set_lyra_config(config)
+    set_lyra_event_bus(event_bus)
     register_atlas_tools()
     register_logos_tools()
     register_echo_tools()
     register_aegis_tools()
     register_director_tools()
     register_phantom_tools()
+    register_lyra_tools()
     resume_interrupted_workflows()
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
@@ -151,6 +156,18 @@ async def run_forever(config_path: str | Path | None = None) -> None:
 
     state = await bootstrap(config_path)
     phantom_task = asyncio.create_task(phantom_loop())
+    lyra_token: str | None = None
+    config = getattr(state, "config", None)
+    lyra_config = getattr(config, "lyra", None) if config is not None else None
+    if lyra_config is not None and lyra_config.enabled:
+        async def on_wake_word(_topic: str, payload: Any) -> None:
+            transcription = payload.get("transcription", {}) if isinstance(payload, dict) else {}
+            text = str(transcription.get("text", ""))
+            if text:
+                await state.agent_loop.run(text)
+
+        lyra_token = await state.event_bus.subscribe("lyra.wake_word_detected", on_wake_word)
+        start_wake_word_listener()
     if state.ipc_server is not None:
         await state.ipc_server.start()
     if state.hotkey is not None:
@@ -164,6 +181,10 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         pass
     finally:
         phantom_task.cancel()
+        if lyra_config is not None and lyra_config.enabled:
+            stop_wake_word_listener()
+            if lyra_token is not None:
+                await state.event_bus.unsubscribe("lyra.wake_word_detected", lyra_token)
         if state.hotkey is not None:
             state.hotkey.stop()
         if state.tray is not None:

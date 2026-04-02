@@ -60,9 +60,13 @@ class ReActAgentLoop:
                 return AgentLoopResult(ok=False, error=model_result.error or "model-error", steps=steps)
             parsed = self._parse_response(model_result.content)
             if parsed.get("type") == "final":
-                return AgentLoopResult(ok=True, answer=str(parsed.get("response", "")), steps=steps)
+                answer = str(parsed.get("response", ""))
+                await self._maybe_voice_response(answer)
+                return AgentLoopResult(ok=True, answer=answer, steps=steps)
             if parsed.get("type") != "tool":
-                return AgentLoopResult(ok=True, answer=model_result.content, steps=steps)
+                answer = model_result.content
+                await self._maybe_voice_response(answer)
+                return AgentLoopResult(ok=True, answer=answer, steps=steps)
             tool_name = str(parsed.get("tool", ""))
             arguments = parsed.get("arguments") or {}
             tier = 0
@@ -103,6 +107,19 @@ class ReActAgentLoop:
             return
         try:
             await auto_extract_memories(user_message, response)
+        except Exception:
+            return
+
+    async def _maybe_voice_response(self, answer: str) -> None:
+        lyra_config = getattr(self._config, "lyra", None)
+        if lyra_config is None or not lyra_config.enabled or not lyra_config.voice_mode:
+            return
+        try:
+            from aura.agents.lyra.tools import listen_once, speak, strip_markdown
+
+            spoken = strip_markdown(answer)
+            await asyncio.to_thread(speak, spoken)
+            await asyncio.to_thread(listen_once)
         except Exception:
             return
 
