@@ -133,6 +133,23 @@ def send_notification(title: str, message: str) -> NotificationResult:
         return NotificationResult(ok=False, message=str(exc), details={"platform": info.system})
 
 
+def open_application(name: str, args: list[str] | None = None) -> PlatformResult:
+    """Open an application using the OS default launcher."""
+
+    app_args = args or []
+    info = detect_os()
+    try:
+        if info.is_windows:
+            os.startfile(name)  # type: ignore[attr-defined]
+        elif info.is_macos:
+            subprocess.Popen(["open", "-a", name, *app_args])
+        else:
+            subprocess.Popen([name, *app_args])
+        return PlatformResult(ok=True, action="open_application", message="Application opened", details={"name": name, "args": app_args})
+    except Exception as exc:  # pragma: no cover - platform dependent
+        return PlatformResult(ok=False, action="open_application", message=str(exc), details={"name": name, "args": app_args})
+
+
 def open_path(path: str | Path) -> PlatformResult:
     """Backward-compatible alias for open_file."""
 
