@@ -214,7 +214,7 @@ Each tool must:
 
 ## Phase 2 — LOGOS (Code & Logic Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — LOGOS code execution, debugging, patching, linting, and git helpers implemented.
 
 ### Objective
 
@@ -243,11 +243,11 @@ Key tools:
 
 ### Tasks Checklist
 
-- [ ] Implement sandboxed Python execution (e.g., subprocess with resource limits).
-- [ ] Add language routing (Python, JS, Bash at minimum).
-- [ ] Implement diff-based code writes instead of overwriting whole files.
-- [ ] Integrate with git if repo detected in `context_dir`.
-- [ ] Add code style enforcement (ruff/black for Python) via tools.
+- [x] Implement sandboxed Python execution (e.g., subprocess with resource limits).
+- [x] Add language routing (Python, JS, Bash at minimum).
+- [x] Implement diff-based code writes instead of overwriting whole files.
+- [x] Integrate with git if repo detected in `context_dir`.
+- [x] Add code style enforcement (ruff/black for Python) via tools.
 
 ### AI Notes
 

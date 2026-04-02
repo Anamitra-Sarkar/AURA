@@ -20,6 +20,7 @@ class ToolSpec:
     arguments_schema: dict[str, Any]
     return_schema: dict[str, Any]
     handler: ToolHandler
+    tier_resolver: Callable[[dict[str, Any]], Tier] | None = None
 
     def to_schema(self) -> dict[str, Any]:
         """Return a JSON-schema-friendly representation of the tool."""
@@ -60,6 +61,7 @@ class ToolRegistry:
         tier: Tier,
         arguments_schema: dict[str, Any],
         return_schema: dict[str, Any],
+        tier_resolver: Callable[[dict[str, Any]], Tier] | None = None,
     ) -> Callable[[ToolHandler], ToolHandler]:
         """Return a decorator that registers a tool function."""
 
@@ -72,6 +74,7 @@ class ToolRegistry:
                     arguments_schema=arguments_schema,
                     return_schema=return_schema,
                     handler=func,
+                    tier_resolver=tier_resolver,
                 )
             )
             return func
@@ -100,15 +103,16 @@ class ToolRegistry:
             spec = self.get(name)
         except KeyError:
             return ToolCallResult(ok=False, tool=name, tier=0, error=f"unknown-tool:{name}")
-        if spec.tier >= 3 and not confirm:
-            return ToolCallResult(ok=False, tool=name, tier=spec.tier, error="tier-3-confirmation-required")
+        effective_tier = spec.tier_resolver(arguments or {}) if spec.tier_resolver is not None else spec.tier
+        if effective_tier >= 3 and not confirm:
+            return ToolCallResult(ok=False, tool=name, tier=effective_tier, error="tier-3-confirmation-required")
         try:
             outcome = spec.handler(arguments or {})
             if inspect.isawaitable(outcome):
                 outcome = await outcome
-            return ToolCallResult(ok=True, tool=name, tier=spec.tier, result=outcome)
+            return ToolCallResult(ok=True, tool=name, tier=effective_tier, result=outcome)
         except Exception as exc:
-            return ToolCallResult(ok=False, tool=name, tier=spec.tier, error=str(exc))
+            return ToolCallResult(ok=False, tool=name, tier=effective_tier, error=str(exc))
 
 
 def build_tool_schema(name: str, description: str, arguments_schema: dict[str, Any], return_schema: dict[str, Any], tier: Tier) -> dict[str, Any]:
@@ -133,6 +137,7 @@ def register_tool(
     tier: Tier,
     arguments_schema: dict[str, Any],
     return_schema: dict[str, Any],
+    tier_resolver: Callable[[dict[str, Any]], Tier] | None = None,
 ) -> Callable[[ToolHandler], ToolHandler]:
     """Register a tool in the global registry."""
 
@@ -142,6 +147,7 @@ def register_tool(
         tier=tier,
         arguments_schema=arguments_schema,
         return_schema=return_schema,
+        tier_resolver=tier_resolver,
     )
 
 
