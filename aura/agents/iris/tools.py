@@ -150,6 +150,15 @@ def web_search(query: str, num_results: int = 10, date_filter: str | None = None
 def fetch_url(url: str, extract_main_content: bool = True) -> PageContent:
     """Fetch a URL and return extracted page content."""
 
+    if Path(url).exists():
+        text = Path(url).read_text(encoding="utf-8", errors="replace")
+        title = Path(url).name
+        links: list[str] = []
+        if extract_main_content:
+            text_parser = _TextCollector()
+            text_parser.feed(text)
+            text = "\n".join(text_parser.parts)
+        return PageContent(url=str(Path(url)), title=title, main_text=text, word_count=len(text.split()), fetched_at=datetime.now(timezone.utc), links=links)
     if extract_main_content:
         page_id = hermes.open_url(url, check_safety=False).page_id
         text = hermes.get_page_text(page_id)

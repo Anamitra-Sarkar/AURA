@@ -303,6 +303,9 @@ Tools:
 - **Phase 4:** Broke the Mneme/ECHO circular import by making ECHO load `save_memory` lazily inside `set_reminder()`.
 - **Phase 5:** Added synchronous event publication support to `EventBus` so HERMES actions can be observed immediately from tests and replay consumers.
 - **Phase 6:** Fixed IRIS cache lookups to match exact `search:{query}` keys so cached search results are reused correctly.
+- **Phase 7:** Cleaned AEGIS imports and audit logging paths after the new system-control tests exposed unused dependencies.
+- **Phase 8:** Fixed workflow serialization and pause/resume races so paused workflows persist correctly without deadlocking.
+- **Phase 9:** Added deterministic Phantom test coverage for watch changes, briefing generation, recovery, and loop execution.
 
 ## Phase 4 — MNEME (Memory Agent)
 
@@ -436,7 +439,7 @@ Tools:
 
 ## Phase 7 — AEGIS (System Monitor & Control Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — AEGIS system metrics, process control, shell execution, clipboard, screenshots, networking, and monitors implemented.
 
 ### Objective
 
@@ -464,10 +467,10 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Implement system info gathering (psutil or equivalent).
-- [ ] Implement cross-platform app launching.
-- [ ] Implement safe shell command execution with Tier 3 gate.
-- [ ] Implement per-action logging with user ID and timestamp.
+- [x] Implement system info gathering (psutil or equivalent).
+- [x] Implement cross-platform app launching.
+- [x] Implement safe shell command execution with Tier 3 gate.
+- [x] Implement per-action logging with user ID and timestamp.
 
 ### AI Notes
 
@@ -477,7 +480,7 @@ Tools:
 
 ## Phase 8 — DIRECTOR (Workflow Engine)
 
-**Status:** NOT_STARTED
+**Status:** DONE — DIRECTOR workflow planning, execution, persistence, approvals, retries, and replay implemented.
 
 ### Objective
 
@@ -508,14 +511,14 @@ Tools/functions:
 
 ### Tasks Checklist
 
-- [ ] Define workflow schema: steps, edges, metadata.
-- [ ] Implement planner using NEXUS + free reasoning model.
-- [ ] Implement executor with:
-  - [ ] retries,
-  - [ ] timeouts,
-  - [ ] approval hooks.
-- [ ] Implement event log suitable for replay (UI and textual).
-- [ ] Implement example workflow: **teacher assignment flow** (PPTX + Google Form submission).
+- [x] Define workflow schema: steps, edges, metadata.
+- [x] Implement planner using NEXUS + free reasoning model.
+- [x] Implement executor with:
+   - [x] retries,
+   - [x] timeouts,
+   - [x] approval hooks.
+- [x] Implement event log suitable for replay (UI and textual).
+- [x] Implement example workflow: **teacher assignment flow** (PPTX + Google Form submission).
 
 ### AI Notes
 
@@ -526,7 +529,7 @@ Tools/functions:
 
 ## Phase 9 — PHANTOM (Background Autopilot)
 
-**Status:** NOT_STARTED
+**Status:** DONE — PHANTOM scheduler, watches, briefing generation, pause/resume, and recovery hooks implemented.
 
 ### Objective
 
@@ -556,10 +559,10 @@ Tools/services:
 
 ### Tasks Checklist
 
-- [ ] Implement simple scheduler (cron-like) for PHANTOM.
-- [ ] Implement portal watcher for at least one target (e.g., college portal or LMS) using HERMES.
-- [ ] Implement daily briefing generator using MNEME + IRIS.
-- [ ] Implement toggles to pause all PHANTOM activity.
+- [x] Implement simple scheduler (cron-like) for PHANTOM.
+- [x] Implement portal watcher for at least one target (e.g., college portal or LMS) using HERMES.
+- [x] Implement daily briefing generator using MNEME + IRIS.
+- [x] Implement toggles to pause all PHANTOM activity.
 
 ### AI Notes
 
