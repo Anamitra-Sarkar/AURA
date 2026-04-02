@@ -20,6 +20,8 @@ from .core.logging import configure_logging, get_logger
 from .core.tools import ToolRegistry, ToolSpec
 from .core.tray import TrayController
 from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
+from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
+from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
 
 
 @dataclass(slots=True)
@@ -64,7 +66,11 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     agent_loop = ReActAgentLoop(router=router, registry=registry, event_bus=event_bus)
     set_atlas_config(config)
     set_atlas_event_bus(event_bus)
+    set_logos_router(router)
+    set_echo_config(config)
     register_atlas_tools()
+    register_logos_tools()
+    register_echo_tools()
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
     tray = TrayController() if config.features.tray else None

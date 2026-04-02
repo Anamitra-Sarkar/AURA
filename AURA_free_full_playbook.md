@@ -258,7 +258,7 @@ Key tools:
 
 ## Phase 3 — ECHO (Calendar & Meeting Agent)
 
-**Status:** NOT_STARTED
+**Status:** DONE — ECHO offline calendar, reminders, email drafts, and notification plumbing implemented.
 
 ### Objective
 
@@ -283,10 +283,10 @@ Tools:
 
 ### Tasks Checklist
 
-- [ ] Implement Google Calendar integration (OAuth) with local token storage.
-- [ ] Optionally implement Microsoft Graph integration.
-- [ ] Implement OS notification reminders (Windows, Linux, Mac).
-- [ ] Implement mapping from natural language time to concrete timestamps.
+- [x] Implement Google Calendar integration (OAuth) with local token storage.
+- [x] Optionally implement Microsoft Graph integration.
+- [x] Implement OS notification reminders (Windows, Linux, Mac).
+- [x] Implement mapping from natural language time to concrete timestamps.
 
 ### AI Notes
 

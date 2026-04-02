@@ -6,6 +6,7 @@ import os
 import platform as py_platform
 import subprocess
 import sys
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,15 @@ class PlatformResult:
 
     ok: bool
     action: str
+    message: str
+    details: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class NotificationResult:
+    """Structured result from a system notification request."""
+
+    ok: bool
     message: str
     details: dict[str, Any] | None = None
 
@@ -93,3 +103,22 @@ def open_path(path: str | Path) -> PlatformResult:
         return PlatformResult(ok=True, action="open_path", message="Opened path", details={"path": target})
     except Exception as exc:  # pragma: no cover - exercised via tests with monkeypatch
         return PlatformResult(ok=False, action="open_path", message=str(exc), details={"path": target})
+
+
+def notify_user(title: str, message: str) -> NotificationResult:
+    """Send a desktop notification if the platform supports it."""
+
+    info = detect_platform()
+    try:
+        if info.is_linux and shutil.which("notify-send"):
+            subprocess.run(["notify-send", title, message], capture_output=True, text=True, check=False)
+            return NotificationResult(ok=True, message="notification-sent", details={"platform": info.system})
+        if info.is_macos:
+            script = f'display notification {message!r} with title {title!r}'
+            subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+            return NotificationResult(ok=True, message="notification-sent", details={"platform": info.system})
+        if info.is_windows:
+            return NotificationResult(ok=False, message="windows-notification-unavailable", details={"platform": info.system})
+        return NotificationResult(ok=False, message="notification-unavailable", details={"platform": info.system})
+    except Exception as exc:  # pragma: no cover - platform dependent
+        return NotificationResult(ok=False, message=str(exc), details={"platform": info.system})
