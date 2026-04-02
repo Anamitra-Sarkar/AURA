@@ -37,3 +37,5 @@ __all__ = [
     "watch_folder",
     "write_file",
 ]
+
+TOOL_LIST = [name for name in __all__ if name and name[0].islower()]

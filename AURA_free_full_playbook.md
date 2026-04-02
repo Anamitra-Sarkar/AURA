@@ -295,6 +295,12 @@ Tools:
 
 ---
 
+## Regression Fixes
+
+- **Phase 0:** Added lazy builtin tool loading in `core/tools.py` so a fresh process sees the ATLAS, LOGOS, and ECHO tools without manual imports.
+- **Phase 0:** Normalized platform helpers in `core/platform.py` to expose `detect_os`, `open_file`, and `send_notification` while keeping compatibility aliases for earlier code paths.
+- **Phase 1-3 compatibility:** Kept `open_path` and `notify_user` aliases so existing tests and older call sites continue to work after the platform abstraction cleanup.
+
 ## Phase 4 — MNEME (Memory Agent)
 
 **Status:** NOT_STARTED

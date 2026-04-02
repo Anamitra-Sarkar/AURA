@@ -40,3 +40,5 @@ __all__ = [
     "run_tests",
     "set_router",
 ]
+
+TOOL_LIST = [name for name in __all__ if name and name[0].islower()]

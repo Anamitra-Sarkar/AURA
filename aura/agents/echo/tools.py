@@ -16,7 +16,7 @@ import dateparser
 
 from aura.core.config import AppConfig, load_config
 from aura.core.logging import get_logger
-from aura.core.platform import notify_user, open_path
+from aura.core.platform import open_file, send_notification
 from aura.core.tools import ToolSpec, get_tool_registry
 
 from .models import EmailDraft, Event, OperationResult, Reminder
@@ -24,6 +24,8 @@ from .models import EmailDraft, Event, OperationResult, Reminder
 LOGGER = get_logger(__name__, component="echo")
 CONFIG: AppConfig = load_config()
 EMAIL_CONFIG: dict[str, Any] | None = None
+notify_user = send_notification
+open_path = open_file
 
 
 class EchoError(Exception):
@@ -273,7 +275,7 @@ def set_reminder(text: str, trigger_time: str, repeat: str | None = None) -> Rem
         connection.commit()
     finally:
         connection.close()
-    notification = notify_user("AURA reminder", text)
+    notification = send_notification("AURA reminder", text)
     if not notification.ok:
         LOGGER.info("reminder-notification-fallback", extra={"message": notification.message, "text": text})
     return reminder
@@ -298,7 +300,7 @@ def get_upcoming_reminders(hours_ahead: int = 24) -> list[Reminder]:
 def join_meeting(link: str) -> OperationResult:
     """Open a meeting link using the platform default handler."""
 
-    result = open_path(link)
+    result = open_file(link)
     return OperationResult(result.ok, result.message, result.details)
 
 

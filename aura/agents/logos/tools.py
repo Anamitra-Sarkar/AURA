@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import difflib
 import json
-import os
 import shutil
 import sqlite3
 import subprocess
@@ -18,6 +17,7 @@ from typing import Any
 from aura.core.tools import ToolSpec, get_tool_registry
 
 from aura.agents.atlas.models import OperationResult
+from aura.core.platform import detect_os
 
 from .models import CodePatch, Explanation, GitStatus, LintIssue, LintReport, RunResult, SuggestedFix, TestResult
 
@@ -87,7 +87,7 @@ def _run_python(code: str, context_dir: str | None) -> RunResult:
     start = time.monotonic()
     try:
         preexec_fn = None
-        if os.name == "posix":
+        if detect_os().is_posix:
             def _limit() -> None:
                 try:
                     import resource

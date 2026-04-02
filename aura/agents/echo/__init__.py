@@ -36,3 +36,5 @@ __all__ = [
     "set_email_config",
     "update_meeting",
 ]
+
+TOOL_LIST = [name for name in __all__ if name and name[0].islower()]

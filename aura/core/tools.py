@@ -128,6 +128,19 @@ def build_tool_schema(name: str, description: str, arguments_schema: dict[str, A
 
 
 GLOBAL_TOOL_REGISTRY = ToolRegistry()
+_BUILTIN_TOOLS_LOADED = False
+
+
+def ensure_builtin_tools_loaded() -> None:
+    """Import built-in agent packages so their tools register themselves."""
+
+    global _BUILTIN_TOOLS_LOADED
+    if _BUILTIN_TOOLS_LOADED:
+        return
+    import aura.agents.atlas.tools  # noqa: F401
+    import aura.agents.logos.tools  # noqa: F401
+    import aura.agents.echo.tools  # noqa: F401
+    _BUILTIN_TOOLS_LOADED = True
 
 
 def register_tool(
@@ -154,4 +167,5 @@ def register_tool(
 def get_tool_registry() -> ToolRegistry:
     """Return the process-wide tool registry."""
 
+    ensure_builtin_tools_loaded()
     return GLOBAL_TOOL_REGISTRY

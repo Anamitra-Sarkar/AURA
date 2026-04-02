@@ -16,7 +16,7 @@ from typing import Any
 from aura.core.config import AppConfig, load_config
 from aura.core.event_bus import EventBus
 from aura.core.logging import get_logger
-from aura.core.platform import open_path as platform_open_path
+from aura.core.platform import open_file as platform_open_file
 from aura.core.tools import ToolSpec, get_tool_registry
 
 from .models import FileContent, FileEntry, FileMatch, OperationResult, WatchHandle
@@ -363,7 +363,7 @@ def open_file(path: str) -> OperationResult:
     """Open a file or folder with the platform default handler."""
 
     resolved = _validate_allowed(Path(path))
-    result = platform_open_path(resolved)
+    result = platform_open_file(resolved)
     return OperationResult(result.ok, result.message, {"path": str(resolved), **(result.details or {})})
 
 

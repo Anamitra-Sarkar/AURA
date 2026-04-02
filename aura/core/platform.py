@@ -7,6 +7,7 @@ import platform as py_platform
 import subprocess
 import sys
 import shutil
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,10 @@ class PlatformInfo:
     def is_linux(self) -> bool:
         return self.system.lower() == "linux"
 
+    @property
+    def is_posix(self) -> bool:
+        return self.system.lower() in {"linux", "darwin"}
+
 
 @dataclass(slots=True)
 class PlatformResult:
@@ -52,7 +57,7 @@ class NotificationResult:
     details: dict[str, Any] | None = None
 
 
-def detect_platform() -> PlatformInfo:
+def detect_os() -> PlatformInfo:
     """Return the current runtime platform information."""
 
     return PlatformInfo(
@@ -65,7 +70,7 @@ def detect_platform() -> PlatformInfo:
 def supports_unix_sockets() -> bool:
     """Return True when Unix domain sockets are supported."""
 
-    return os.name == "posix" and hasattr(socket_factory(), "AF_UNIX")
+    return detect_os().is_posix and hasattr(socket_factory(), "AF_UNIX")
 
 
 def socket_factory() -> Any:
@@ -79,7 +84,7 @@ def socket_factory() -> Any:
 def default_data_dir(app_name: str) -> Path:
     """Return a conventional per-user data directory for the current OS."""
 
-    info = detect_platform()
+    info = detect_os()
     home = Path.home()
     if info.is_windows:
         return home / "AppData" / "Local" / app_name
@@ -88,27 +93,31 @@ def default_data_dir(app_name: str) -> Path:
     return home / ".local" / "share" / app_name
 
 
-def open_path(path: str | Path) -> PlatformResult:
+def open_file(path: str | Path) -> PlatformResult:
     """Open a file or folder using the OS default handler."""
 
-    target = str(Path(path))
+    target = str(path)
     try:
-        info = detect_platform()
+        if target.startswith(("http://", "https://")):
+            webbrowser.open(target)
+            return PlatformResult(ok=True, action="open_file", message="Opened URL", details={"path": target})
+        file_path = Path(target)
+        info = detect_os()
         if info.is_windows:
-            os.startfile(target)  # type: ignore[attr-defined]
+            os.startfile(str(file_path))  # type: ignore[attr-defined]
         elif info.is_macos:
-            subprocess.Popen(["open", target])
+            subprocess.Popen(["open", str(file_path)])
         else:
-            subprocess.Popen(["xdg-open", target])
-        return PlatformResult(ok=True, action="open_path", message="Opened path", details={"path": target})
+            subprocess.Popen(["xdg-open", str(file_path)])
+        return PlatformResult(ok=True, action="open_file", message="Opened path", details={"path": target})
     except Exception as exc:  # pragma: no cover - exercised via tests with monkeypatch
-        return PlatformResult(ok=False, action="open_path", message=str(exc), details={"path": target})
+        return PlatformResult(ok=False, action="open_file", message=str(exc), details={"path": target})
 
 
-def notify_user(title: str, message: str) -> NotificationResult:
+def send_notification(title: str, message: str) -> NotificationResult:
     """Send a desktop notification if the platform supports it."""
 
-    info = detect_platform()
+    info = detect_os()
     try:
         if info.is_linux and shutil.which("notify-send"):
             subprocess.run(["notify-send", title, message], capture_output=True, text=True, check=False)
@@ -122,3 +131,17 @@ def notify_user(title: str, message: str) -> NotificationResult:
         return NotificationResult(ok=False, message="notification-unavailable", details={"platform": info.system})
     except Exception as exc:  # pragma: no cover - platform dependent
         return NotificationResult(ok=False, message=str(exc), details={"platform": info.system})
+
+
+def open_path(path: str | Path) -> PlatformResult:
+    """Backward-compatible alias for open_file."""
+
+    result = open_file(path)
+    if result.action == "open_file":
+        result.action = "open_path"
+    return result
+
+
+# Backwards-compatible alias for earlier phases.
+detect_platform = detect_os
+notify_user = send_notification

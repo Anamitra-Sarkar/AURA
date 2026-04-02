@@ -17,7 +17,7 @@ from .core.hotkey import GlobalHotkeyManager
 from .core.ipc import UnixSocketServer
 from .core.llm_router import OllamaRouter
 from .core.logging import configure_logging, get_logger
-from .core.tools import ToolRegistry, ToolSpec
+from .core.tools import ToolRegistry, ToolSpec, get_tool_registry
 from .core.tray import TrayController
 from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
 from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
@@ -61,7 +61,20 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     logger = get_logger(__name__, component="daemon")
     logger.info("bootstrapping", extra={"event": "bootstrap", "config": str(config.source_path)})
     event_bus = EventBus()
-    registry = _default_registry()
+    registry = get_tool_registry()
+    try:
+        registry.register(
+            ToolSpec(
+                name="system_status",
+                description="Return a basic daemon health snapshot.",
+                tier=1,
+                arguments_schema={"type": "object", "properties": {}, "additionalProperties": False},
+                return_schema={"type": "object"},
+                handler=lambda _args: {"status": "ok"},
+            )
+        )
+    except ValueError:
+        pass
     router = OllamaRouter(model=config.primary_model.name, host=config.primary_model.host)
     agent_loop = ReActAgentLoop(router=router, registry=registry, event_bus=event_bus)
     set_atlas_config(config)
