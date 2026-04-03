@@ -15,6 +15,7 @@ from typing import Any
 import dateparser
 
 from aura.core.config import AppConfig, load_config
+from aura.core.event_bus import EventBus
 from aura.core.logging import get_logger
 from aura.core.platform import open_file, send_notification
 from aura.core.tools import ToolSpec, get_tool_registry
@@ -24,6 +25,7 @@ from .models import EmailDraft, Event, OperationResult, Reminder
 LOGGER = get_logger(__name__, component="echo")
 CONFIG: AppConfig = load_config()
 EMAIL_CONFIG: dict[str, Any] | None = None
+_EVENT_BUS: EventBus = EventBus()
 notify_user = send_notification
 open_path = open_file
 
@@ -44,6 +46,13 @@ def set_config(config: AppConfig) -> None:
 
     global CONFIG
     CONFIG = config
+
+
+def set_event_bus(event_bus: EventBus) -> None:
+    """Override the event bus used by Echo."""
+
+    global _EVENT_BUS
+    _EVENT_BUS = event_bus
 
 
 def _db_path() -> Path:
@@ -202,6 +211,7 @@ def create_meeting(title: str, start: str, end: str, attendees: list[str], platf
             (event.id, event.title, event.start, event.end, json.dumps(event.attendees), event.platform, event.description, event.provider, event.meeting_link, event.created_at),
         )
         connection.commit()
+        _EVENT_BUS.publish_sync("echo.event_created", {"event_id": event.id, "title": event.title, "start": event.start, "end": event.end})
         return event
     finally:
         connection.close()
@@ -219,10 +229,10 @@ def list_events(start_date: str, end_date: str, limit: int = 20) -> list[Event]:
     return list_meetings({"start": start_date, "end": end_date})[:limit]
 
 
-def delete_event(event_id: str) -> OperationResult:
-    """Compatibility wrapper for canceling an event."""
+def delete_event(event_id: str) -> bool:
+    """Compatibility wrapper for deleting an event."""
 
-    return cancel_meeting(event_id, notify_attendees=False)
+    return cancel_meeting(event_id, notify_attendees=False).success
 
 
 def remind_before(event_id: str, minutes_before: int) -> Reminder:
@@ -286,6 +296,7 @@ def cancel_meeting(event_id: str, notify_attendees: bool = True) -> OperationRes
             return OperationResult(False, f"meeting not found: {event_id}", {"event_id": event_id})
         connection.execute("DELETE FROM events WHERE id = ?", (event_id,))
         connection.commit()
+        _EVENT_BUS.publish_sync("echo.event_deleted", {"event_id": event_id, "notify_attendees": notify_attendees})
         return OperationResult(True, "meeting cancelled", {"event_id": event_id, "notify_attendees": notify_attendees})
     finally:
         connection.close()

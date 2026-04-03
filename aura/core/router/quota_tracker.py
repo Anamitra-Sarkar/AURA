@@ -211,3 +211,53 @@ class QuotaTracker:
                 )
             )
         return statuses
+
+
+@dataclass(slots=True)
+class UsageStats:
+    provider: str
+    requests_used_today: int
+    tokens_used_today: int
+    remaining_requests: int | None
+    remaining_tokens: int | None
+
+
+_DEFAULT_TRACKER: QuotaTracker | None = None
+
+
+def _default_tracker() -> QuotaTracker:
+    global _DEFAULT_TRACKER
+    if _DEFAULT_TRACKER is None:
+        from aura.core.config import load_config
+
+        config = load_config()
+        _DEFAULT_TRACKER = QuotaTracker(config.paths.data_dir / "quota_usage.db")
+    return _DEFAULT_TRACKER
+
+
+def record_usage(provider: str, model: str, tokens_used: int) -> None:
+    _default_tracker().record_usage(provider, model, tokens=tokens_used)
+
+
+def get_usage(provider: str, model: str = "default") -> UsageStats:
+    tracker = _default_tracker()
+    row = tracker._row(provider, model)
+    limit = tracker._limit_for(provider, model)
+    return UsageStats(
+        provider=provider,
+        requests_used_today=row["requests_used_today"],
+        tokens_used_today=row["tokens_used_today"],
+        remaining_requests=None if limit.requests is None else max(0, limit.requests - row["requests_used_today"]),
+        remaining_tokens=None if limit.tokens is None else max(0, limit.tokens - row["tokens_used_today"]),
+    )
+
+
+def is_quota_exceeded(provider: str, model: str = "default") -> bool:
+    return not _default_tracker().is_available(provider, model)
+
+
+def get_best_available_provider(task_type: str) -> str | None:
+    for provider in ["groq", "cerebras", "gemini", "mistral", "openrouter"]:
+        if not is_quota_exceeded(provider):
+            return provider
+    return None

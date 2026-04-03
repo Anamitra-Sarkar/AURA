@@ -365,7 +365,39 @@ def get_environment_variable(name: str) -> str:
 
 def set_environment_variable(name: str, value: str) -> OperationResult:
     _ENVIRONMENT[name] = value
+    os.environ[name] = value
+    overrides_path = CONFIG.paths.data_dir / ".env_overrides"
+    overrides_path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    if overrides_path.exists():
+        lines = [line for line in overrides_path.read_text(encoding="utf-8").splitlines() if line and not line.startswith(f"{name}=")]
+    lines.append(f"{name}={value}")
+    overrides_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return OperationResult(True, "environment updated", {"name": name})
+
+
+def get_clipboard() -> str:
+    """Return clipboard text using the existing read helper."""
+
+    return clipboard_read().text
+
+
+def set_clipboard(text: str) -> bool:
+    """Set clipboard text using the existing write helper."""
+
+    return clipboard_write(text).success
+
+
+def set_env_var(key: str, value: str) -> OperationResult:
+    """Compatibility wrapper for setting environment variables."""
+
+    return set_environment_variable(key, value)
+
+
+def screenshot(save_path: str) -> str:
+    """Compatibility wrapper for taking a screenshot."""
+
+    return take_screenshot(save_path=save_path)
 
 
 

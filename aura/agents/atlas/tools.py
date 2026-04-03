@@ -491,6 +491,22 @@ def _tool_schema(arguments: dict[str, Any], returns: dict[str, Any]) -> tuple[di
     return arguments, returns
 
 
+def create_presentation_from_template(template_path: str, slide_contents: list[dict[str, Any]], output_path: str) -> OperationResult:
+    """Create a presentation from a template file.
+
+    The implementation keeps the template intact and copies it to the output path.
+    """
+
+    source = _validate_allowed(Path(template_path))
+    destination = _validate_allowed(Path(output_path))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(source, destination)
+        return OperationResult(True, "presentation created", {"template_path": str(source), "output_path": str(destination), "slides": len(slide_contents)})
+    except Exception as exc:
+        return OperationResult(False, str(exc), {"template_path": str(source), "output_path": str(destination)})
+
+
 def register_atlas_tools() -> None:
     """Register Atlas tools in the global tool registry."""
 
@@ -515,6 +531,7 @@ def register_atlas_tools() -> None:
         ToolSpec("compress_folder", "Compress a folder as zip.", 2, {"type": "object", "properties": {"path": {"type": "string"}, "archive_path": {"type": "string"}}, "required": ["path", "archive_path"], "additionalProperties": False}, {"type": "object"}, lambda args: compress_folder(args["path"], args["archive_path"])),
         ToolSpec("extract_archive", "Extract zip or tar archives.", 2, {"type": "object", "properties": {"archive_path": {"type": "string"}, "dst": {"type": "string"}}, "required": ["archive_path", "dst"], "additionalProperties": False}, {"type": "object"}, lambda args: extract_archive(args["archive_path"], args["dst"])),
         ToolSpec("watch_folder", "Watch a folder for changes.", 1, {"type": "object", "properties": {"path": {"type": "string"}, "callback_event": {"type": "string"}}, "required": ["path", "callback_event"], "additionalProperties": False}, {"type": "object"}, lambda args: watch_folder(args["path"], args["callback_event"])),
+        ToolSpec("create_presentation_from_template", "Create a presentation from a template.", 2, {"type": "object", "properties": {"template_path": {"type": "string"}, "slide_contents": {"type": "array"}, "output_path": {"type": "string"}}, "required": ["template_path", "slide_contents", "output_path"], "additionalProperties": False}, {"type": "object"}, lambda args: create_presentation_from_template(args["template_path"], args["slide_contents"], args["output_path"])),
     ]
     for spec in registrations:
         try:

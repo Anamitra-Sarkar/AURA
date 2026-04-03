@@ -27,6 +27,7 @@ _PAUSED = False
 _PAUSE_UNTIL: datetime | None = None
 _DEFAULT_TASKS_LOADED = False
 _REGISTERED_TASK_HANDLERS: dict[str, Callable[[], Any]] = {}
+_RUNNING_TASKS: set[str] = set()
 
 
 class PhantomError(Exception):
@@ -557,7 +558,80 @@ def schedule_task(name: str, cron_expression: str, instruction: str, enabled: bo
     )
     task.enabled = enabled
     _save_task(task)
+    _EVENT_BUS.publish_sync("phantom.task_scheduled", {"task_id": task.id, "name": task.name, "schedule": task.schedule})
     return task
+
+
+def enable_task(task_id: str) -> bool:
+    task = _load_task(task_id)
+    task.enabled = True
+    _save_task(task)
+    return True
+
+
+def disable_task(task_id: str) -> bool:
+    task = _load_task(task_id)
+    task.enabled = False
+    _save_task(task)
+    return True
+
+
+def delete_task(task_id: str) -> bool:
+    with _connect() as connection:
+        connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        connection.commit()
+    return True
+
+
+def get_task_log(task_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    log_path = CONFIG.paths.data_dir / "phantom_log.jsonl"
+    if not log_path.exists():
+        return []
+    entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    filtered = [entry for entry in entries if entry.get("task_id") == task_id]
+    return filtered[-limit:]
+
+
+def _append_log(payload: dict[str, Any]) -> None:
+    log_path = CONFIG.paths.data_dir / "phantom_log.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+
+def run_task(task_id: str) -> dict[str, Any]:
+    if task_id in _RUNNING_TASKS:
+        return {"task_id": task_id, "status": "running"}
+    task = _load_task(task_id)
+    _RUNNING_TASKS.add(task_id)
+    try:
+        from aura.core.agent_loop import ReActAgentLoop
+        from aura.core.llm_router import OllamaRouter
+
+        loop = ReActAgentLoop(router=OllamaRouter(model=CONFIG.primary_model.name, host=CONFIG.primary_model.host))
+        result = asyncio.run(loop.run(task.description))
+        payload = {"timestamp": _now().isoformat(), "task_id": task.id, "name": task.name, "instruction": task.description, "result": getattr(result, "answer", str(result))}
+        _append_log(payload)
+        task.last_run = _now()
+        task.next_run = _task_next_run(task.schedule, task.last_run)
+        _save_task(task)
+        return payload
+    finally:
+        _RUNNING_TASKS.discard(task_id)
+
+
+def start_scheduler() -> None:
+    async def _loop() -> None:
+        while True:
+            for task in list_workflows():
+                if task.enabled and task.next_run is not None and task.next_run <= _now() and task.id not in _RUNNING_TASKS:
+                    asyncio.create_task(asyncio.to_thread(run_task, task.id))
+            await asyncio.sleep(60)
+
+    try:
+        asyncio.get_running_loop().create_task(_loop())
+    except RuntimeError:
+        return
 
 
 async def phantom_loop() -> None:

@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from aura.core.config import load_config
+
 
 class AuthError(RuntimeError):
     """Raised when authentication fails."""
@@ -95,7 +97,7 @@ class AuthManager:
 
     def _issue_token(self, user_id: str) -> str:
         now = datetime.now(timezone.utc)
-        payload = {"sub": user_id, "iat": int(now.timestamp()), "exp": int((now + timedelta(days=30)).timestamp())}
+        payload = {"sub": user_id, "iat": int(now.timestamp()), "exp": int((now + timedelta(days=7)).timestamp())}
         return self._sign({"alg": "HS256", "typ": "JWT"}, payload)
 
     def register(self, username: str, password: str) -> dict[str, str]:
@@ -117,7 +119,7 @@ class AuthManager:
         user_id, password_hash = row
         if not self._verify_password(password, password_hash):
             raise AuthError("invalid credentials")
-        return {"user_id": str(user_id), "jwt_token": self._issue_token(str(user_id))}
+        return {"user_id": str(user_id), "token": self._issue_token(str(user_id))}
 
     def verify_token(self, token: str) -> str:
         _header, payload = self._decode(token)
@@ -129,7 +131,45 @@ class AuthManager:
             raise AuthError("missing subject")
         return user_id
 
+    def revoke_token(self, token: str) -> bool:
+        revoked_file = self.data_path / "revoked_tokens.json"
+        try:
+            revoked = set(json.loads(revoked_file.read_text(encoding="utf-8")))
+        except Exception:
+            revoked = set()
+        revoked.add(token)
+        revoked_file.write_text(json.dumps(sorted(revoked), ensure_ascii=True, indent=2), encoding="utf-8")
+        return True
+
     def get_user_data_path(self, user_id: str) -> Path:
         path = self.data_path / "users" / user_id
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+
+_DEFAULT_AUTH_MANAGER: AuthManager | None = None
+
+
+def _default_manager() -> AuthManager:
+    global _DEFAULT_AUTH_MANAGER
+    if _DEFAULT_AUTH_MANAGER is None:
+        config = load_config()
+        secret = getattr(getattr(config, "auth", None), "secret_key", None)
+        _DEFAULT_AUTH_MANAGER = AuthManager(config.paths.data_dir, secret=secret)
+    return _DEFAULT_AUTH_MANAGER
+
+
+def register(username: str, password: str) -> dict[str, str]:
+    return _default_manager().register(username, password)
+
+
+def login(username: str, password: str) -> dict[str, str]:
+    return _default_manager().login(username, password)
+
+
+def verify_token(token: str) -> str:
+    return _default_manager().verify_token(token)
+
+
+def revoke_token(token: str) -> bool:
+    return _default_manager().revoke_token(token)
