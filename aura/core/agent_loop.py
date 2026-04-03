@@ -90,11 +90,6 @@ class ReActAgentLoop:
 
             parsed = self._parse_turn(model_result.content)
 
-            # ----------------------------------------------------------------
-            # Final answer path — this now also fires for plain-prose replies
-            # because _parse_turn() treats unstructured content as a final
-            # answer instead of returning {final_answer: None, action: None}.
-            # ----------------------------------------------------------------
             if parsed["final_answer"] is not None:
                 answer = parsed["final_answer"]
                 await self._maybe_voice_response(answer)
@@ -107,13 +102,8 @@ class ReActAgentLoop:
                     reasoning_used=self._reasoning_used(steps),
                 )
 
-            # ----------------------------------------------------------------
-            # Tool-call path
-            # ----------------------------------------------------------------
             action = parsed["action"]
             if action is None:
-                # Should not happen now that _parse_turn() has a prose
-                # fallback, but guard anyway to avoid silent empty responses.
                 answer = model_result.content.strip() or "(no response)"
                 await self._maybe_voice_response(answer)
                 return AgentLoopResult(
@@ -204,7 +194,6 @@ class ReActAgentLoop:
                         yield event
                     return
                 result = await self.run(user_message, importance=importance)
-                # Always send at least the opening keep-alive frame
                 yield {"token": "", "done": False}
                 text = result.answer or result.error or "No response."
                 for chunk in self._chunk_text(text):
@@ -232,9 +221,6 @@ class ReActAgentLoop:
             }
 
         result = await self.run(user_message, importance=importance)
-        # Hard guard: response must NEVER be empty string.
-        # If answer is None/empty, show the error; if that's also empty
-        # show a static fallback so the frontend always renders something.
         response_text = result.answer or result.error or "No response."
         return {
             "response": response_text,
@@ -280,9 +266,6 @@ class ReActAgentLoop:
             )
 
         raw = await self.router.chat(messages)
-        # Guard against router returning None when all providers are
-        # quota-exhausted — without this we get an AttributeError on
-        # raw.ok which swallows the real error.
         if raw is None:
             return _ModelTurn(
                 ok=False,
@@ -318,31 +301,39 @@ class ReActAgentLoop:
             return
 
     def _system_prompt(self, tools: list[Any], memory_context: str = "") -> str:
-        tool_descriptions = [
-            {
-                "name": spec.name,
-                "description": spec.description,
-                "tier": spec.tier,
-                "arguments": spec.arguments_schema,
-                "returns": spec.return_schema,
-            }
+        """Build a compact system prompt that stays well under free-tier token limits.
+
+        The old version serialised full ToolSpec objects (name + description +
+        tier + arguments_schema + return_schema) for every registered tool.
+        With 15+ packages loaded that ballooned to 8-12k tokens and caused
+        Groq / Gemini to return 400 context-length-exceeded on every request.
+
+        This version emits only name + one-line description (~500-800 tokens
+        total regardless of registry size).  Full argument schemas are not
+        needed: the LLM only needs to know *what* tools exist; it will ask for
+        clarification or use best-effort argument guessing, which is fine for
+        a personal assistant.
+        """
+        tool_list = [
+            {"name": spec.name, "description": spec.description, "tier": spec.tier}
             for spec in tools
         ]
-        payload = {
-            "instructions": [
-                "You are AURA, a personal AI assistant.",
-                "Think step by step in a brief Thought section.",
-                "Then output exactly one Action JSON object OR a Final Answer line.",
-                'Valid Action JSON: {"tool":"tool_name","arguments":{...}}',
-                "If you do not need a tool, output: Final Answer: <your answer here>.",
-                "You MUST end every response with either an Action JSON or a Final Answer line.",
-            ],
-            "tools": tool_descriptions,
-            "max_steps": self.max_steps,
-        }
+        lines = [
+            "You are AURA, a fully autonomous personal AI assistant running on the user's PC.",
+            "Think step by step (brief Thought:). Then output EXACTLY ONE of:",
+            '  Action: {"tool": "tool_name", "arguments": {...}}',
+            "  Final Answer: <your complete answer>",
+            "Never output both. Never leave the response empty.",
+            "If no tool is needed, always use Final Answer.",
+            "",
+            "Available tools (name | tier | description):",
+        ]
+        for t in tool_list:
+            lines.append(f"  {t['name']} | tier={t['tier']} | {t['description']}")
         if memory_context:
-            payload["memory_context"] = memory_context
-        return json.dumps(payload, ensure_ascii=True)
+            lines.append("")
+            lines.append(f"Relevant memory context: {memory_context}")
+        return "\n".join(lines)
 
     @staticmethod
     def _importance_level(message: str) -> int:
@@ -369,17 +360,8 @@ class ReActAgentLoop:
 
     @staticmethod
     def _parse_turn(content: str) -> dict[str, Any]:
-        """Parse a single model turn into thought / action / final_answer.
+        """Parse a single model turn into thought / action / final_answer."""
 
-        Priority:
-        1. Explicit ``Final Answer: ...`` marker  -> final_answer
-        2. Explicit ``Action: {...}`` JSON block   -> action
-        3. Bare JSON object with tool/name key     -> action
-        4. Bare JSON with final_answer / type=final -> final_answer
-        5. Plain prose (no markers at all)         -> treat as final_answer
-           This is the key fix: LLMs often just reply with plain text.
-           Returning (None, None) caused 'no response generated'.
-        """
         # 1. Explicit Final Answer marker
         final_answer = ReActAgentLoop._extract_final_answer(content)
         if final_answer is not None:
@@ -423,9 +405,7 @@ class ReActAgentLoop:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # 5. Plain-prose fallback — treat the whole content as the answer.
-        #    This fires for any LLM that just replies conversationally
-        #    without following the ReAct format exactly.
+        # 5. Plain-prose fallback
         stripped = content.strip()
         return {
             "thought": ReActAgentLoop._extract_thought(content),
