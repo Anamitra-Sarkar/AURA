@@ -10,6 +10,28 @@ import type {
   AuraToolSummary,
 } from '../types';
 
+// ---------------------------------------------------------------------------
+// API base URL
+// When deployed to Vercel (static), __VITE_API_BASE__ is injected at build
+// time via vite.config.ts define. It points to the HuggingFace FastAPI backend.
+// When served directly by FastAPI (HF Space), it is empty string → relative paths.
+// ---------------------------------------------------------------------------
+declare const __VITE_API_BASE__: string;
+const API_BASE: string = (typeof __VITE_API_BASE__ !== 'undefined' ? __VITE_API_BASE__ : '').replace(/\/$/, '');
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+function wsUrl(path: string): string {
+  if (!API_BASE) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}${path}`;
+  }
+  // Convert https://host → wss://host
+  return API_BASE.replace(/^http/, 'ws') + path;
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -177,7 +199,7 @@ export function useAuraClient() {
 
   const apiFetch = useCallback(
     async <T,>(path: string, init: RequestInit = {}, overrideToken?: string): Promise<T> => {
-      const response = await fetch(path, {
+      const response = await fetch(apiUrl(path), {
         ...init,
         headers: buildHeaders(overrideToken, init.headers),
       });
@@ -271,8 +293,7 @@ export function useAuraClient() {
     if (!isAuthenticated) {
       return;
     }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/events?token=${encodeURIComponent(token)}`);
+    const socket = new WebSocket(`${wsUrl('/ws/events')}?token=${encodeURIComponent(token)}`);
     setConnectionState('connecting');
     socket.onopen = () => setConnectionState('connected');
     socket.onclose = () => setConnectionState('disconnected');
@@ -306,7 +327,7 @@ export function useAuraClient() {
     setIsSubmittingAuth(true);
     setAuthError(null);
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -356,7 +377,7 @@ export function useAuraClient() {
     setDraft('');
 
     try {
-      const response = await fetch('/api/message', {
+      const response = await fetch(apiUrl('/api/message'), {
         method: 'POST',
         headers: {
           ...authHeaders,
