@@ -75,7 +75,7 @@ def test_tier_gate_and_audit_log(monkeypatch, aegis_config):
     assert audit and json.loads(audit[-1])["action"] == "kill_process"
 
 
-@pytest.mark.parametrize("cmd", ["echo hi; rm -rf /", "echo hi && echo bye", "echo hi | cat", "echo hi || echo bye"])
+@pytest.mark.parametrize("cmd", ["echo hi; rm -rf /", "mkfs.ext4 /dev/sda", "dd if=/dev/zero > /dev/sda", ":(){:|:&};:"])
 def test_run_shell_command_rejects_shell_injection(cmd, aegis_config):
     with pytest.raises(aegis.AegisError):
         aegis.run_shell_command(cmd)

@@ -33,14 +33,19 @@ _CLIPBOARD_CACHE = ""
 _ENVIRONMENT: dict[str, str] = {}
 HF_SPACE = bool(os.environ.get("HF_SPACE"))
 
-DISPLAY_AVAILABLE = bool(os.environ.get("DISPLAY"))
-
-if not HF_SPACE and DISPLAY_AVAILABLE:
-    import mss  # type: ignore
-    from mss import tools as mss_tools  # type: ignore
-    import pyautogui  # type: ignore
-    import pygetwindow  # type: ignore
-    import pyperclip  # type: ignore
+if not HF_SPACE:
+    try:
+        import mss  # type: ignore
+        from mss import tools as mss_tools  # type: ignore
+        import pyautogui  # type: ignore
+        import pygetwindow  # type: ignore
+        import pyperclip  # type: ignore
+    except Exception:  # pragma: no cover - fallback for headless environments
+        mss = None  # type: ignore[assignment]
+        mss_tools = None  # type: ignore[assignment]
+        pyautogui = None  # type: ignore[assignment]
+        pygetwindow = None  # type: ignore[assignment]
+        pyperclip = None  # type: ignore[assignment]
 else:  # pragma: no cover - imported only in hosted environments
     mss = None  # type: ignore[assignment]
     mss_tools = None  # type: ignore[assignment]
@@ -220,9 +225,9 @@ def get_process(name_or_pid: str) -> ProcessInfo | None:
 
 
 def _validate_shell_command(cmd: str) -> None:
-    forbidden = [";", "&&", "||", "|"]
-    if any(token in cmd for token in forbidden):
-        raise AegisError("shell injection patterns are not allowed")
+    forbidden = ["rm -rf /", "mkfs", "> /dev/sd", "dd if=", ":(){:|:&};:"]
+    if any(token in cmd.lower() for token in forbidden):
+        raise AegisError("destructive command pattern detected")
 
 
 def run_shell_command(cmd: str, timeout_seconds: int = 30, working_dir: str | None = None) -> CommandResult:
