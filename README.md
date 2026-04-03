@@ -1,3 +1,19 @@
+---
+title: AURA Agent
+emoji: 🤖
+colorFrom: teal
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: true
+---
+
+# AURA — Your Personal AI Agent
+
+Free. Open. For everyone.
+
+[Connect AURA to your PC →](pip install aura-client)
+
 # AURA
 
 AURA is a free, local-first AI agent stack with multi-provider routing, tool-calling, memory, browser/system/file automation, and a FastAPI control surface.
