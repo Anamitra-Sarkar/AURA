@@ -1,0 +1,134 @@
+=== SCAN 1: TODO/HACK/placeholder etc ===
+aura/memory/mneme/tools.py:470:            pass
+aura/browser/hermes/tools.py:480:            pass
+aura/ui/server.py:612:        pass
+aura/ui/server.py:626:        pass
+aura/core/router/quota_tracker.py:157:                pass
+aura/core/ipc.py:1:"""Unix socket IPC stub for AURA."""
+aura/core/platform.py:1:"""Cross-platform platform helpers and abstraction stubs."""
+aura/core/agent_loop.py:195:            pass
+aura/core/multiagent/orchestrator.py:56:                pass
+aura/core/hotkey.py:1:"""Global hotkey stub built around pynput."""
+aura/core/tray.py:1:"""System tray stub built around pystray."""
+aura/agents/aegis/tools.py:6:import getpass
+aura/agents/aegis/tools.py:263:        pass
+aura/agents/aegis/tools.py:276:        pass
+aura/agents/aegis/tools.py:427:            pass
+aura/agents/phantom/tools.py:233:        pass
+aura/agents/phantom/tools.py:335:            pass
+aura/agents/phantom/tools.py:357:            pass
+aura/agents/phantom/tools.py:361:            pass
+aura/agents/phantom/tools.py:665:            pass
+aura/agents/echo/tools.py:425:            pass
+aura/agents/mosaic/tools.py:105:        pass
+aura/agents/mosaic/tools.py:122:        pass
+aura/agents/mosaic/tools.py:148:        pass
+aura/agents/mosaic/tools.py:288:            pass
+aura/agents/mobile/tools.py:113:            pass
+aura/agents/director/tools.py:287:        pass
+aura/agents/director/tools.py:634:                pass
+aura/agents/director/tools.py:679:            pass
+aura/agents/oracle_deep/tools.py:75:        pass
+aura/agents/oracle_deep/tools.py:413:            pass
+aura/agents/stream/tools.py:436:        pass
+aura/agents/stream/tools.py:440:        pass
+aura/agents/stream/tools.py:467:            pass
+aura/agents/logos/tools.py:296:        pass
+aura/agents/logos/tools.py:317:        pass
+aura/agents/logos/tools.py:498:            pass
+aura/agents/ensemble/tools.py:104:        pass
+aura/agents/ensemble/tools.py:192:            pass
+aura/agents/atlas/tools.py:540:            pass
+aura/agents/lyra/tools.py:374:            pass
+aura/agents/iris/tools.py:240:            pass
+aura/agents/iris/tools.py:293:            pass
+aura/agents/iris/tools.py:302:            pass
+aura/agents/iris/tools.py:309:            pass
+aura/agents/iris/tools.py:395:            pass
+aura/daemon.py:123:        pass
+aura/daemon.py:219:        pass
+=== SCAN 2: constant return shortcuts ===
+aura/memory/mneme/tools.py:387:        return ""
+aura/memory/mneme/tools.py:406:        return []
+aura/memory/mneme/tools.py:422:        return []
+aura/browser/hermes/tools.py:70:            return False
+aura/browser/hermes/tools.py:72:            return False
+aura/browser/hermes/tools.py:76:                return False
+aura/browser/hermes/tools.py:77:        return True
+aura/browser/hermes/tools.py:225:        return False
+aura/browser/hermes/tools.py:247:    return ""
+aura/browser/hermes/tools.py:285:        return []
+aura/ui/server.py:162:        return None
+aura/ui/server.py:515:        return []
+aura/ui/server.py:649:        return None
+aura/core/router/quota_tracker.py:155:                    return False
+aura/core/router/quota_tracker.py:160:            return False
+aura/core/router/quota_tracker.py:162:            return False
+aura/core/router/quota_tracker.py:164:            return False
+aura/core/router/quota_tracker.py:166:            return False
+aura/core/router/quota_tracker.py:167:        return True
+aura/core/router/quota_tracker.py:263:    return None
+aura/core/event_bus.py:47:                return False
+aura/core/event_bus.py:51:            return True
+aura/core/auth/manager.py:65:            return False
+aura/core/auth/manager.py:142:        return True
+aura/core/llm_router.py:38:            return None
+aura/core/llm_router.py:43:        return None
+aura/agents/aegis/tools.py:183:    return None
+aura/agents/phantom/tools.py:398:        return []
+aura/agents/phantom/tools.py:419:        return False
+aura/agents/phantom/tools.py:432:            return True
+aura/agents/phantom/tools.py:435:        return False
+aura/agents/phantom/tools.py:437:        return False
+aura/agents/phantom/tools.py:438:    return False
+aura/agents/phantom/tools.py:443:        return []
+aura/agents/phantom/tools.py:569:    return True
+aura/agents/phantom/tools.py:576:    return True
+aura/agents/phantom/tools.py:583:    return True
+aura/agents/phantom/tools.py:589:        return []
+aura/agents/mobile/tools.py:26:        return []
+aura/agents/mobile/tools.py:73:        return []
+aura/agents/mobile/tools.py:85:        return ""
+aura/agents/director/tools.py:282:        return None
+aura/agents/director/tools.py:285:        return None
+aura/agents/director/tools.py:308:        return None
+aura/agents/director/tools.py:310:        return None
+aura/agents/director/tools.py:392:                    return ""
+aura/agents/director/tools.py:466:                return True
+aura/agents/director/tools.py:480:                    return True
+aura/agents/director/tools.py:488:                return False
+aura/agents/oracle_deep/tools.py:66:        return ""
+aura/agents/oracle_deep/tools.py:100:        return ""
+aura/agents/oracle_deep/tools.py:128:    return None
+aura/agents/stream/tools.py:78:        return None
+aura/agents/stream/tools.py:80:        return None
+aura/agents/stream/tools.py:95:        return None
+aura/agents/stream/tools.py:102:        return None
+aura/agents/stream/tools.py:104:        return None
+aura/agents/stream/tools.py:190:        return []
+aura/agents/stream/tools.py:299:        return []
+aura/agents/stream/tools.py:303:        return []
+aura/agents/stream/tools.py:342:    return []
+aura/agents/stream/tools.py:350:        return []
+aura/agents/ensemble/tools.py:72:        return [], []
+aura/agents/atlas/tools.py:70:        return True
+aura/agents/atlas/tools.py:72:        return False
+aura/agents/lyra/tools.py:316:        return []
+aura/agents/iris/tools.py:121:        return None
+aura/agents/iris/tools.py:122:    return None
+aura/agents/iris/tools.py:129:        return None
+aura/agents/iris/tools.py:135:                return None
+aura/agents/iris/tools.py:139:        return None
+=== SCAN 3: compatibility wrappers / aliases ===
+aura/core/platform.py:154:    """Backward-compatible alias for open_file."""
+aura/core/platform.py:162:# Backwards-compatible alias for earlier phases.
+aura/core/agent_loop.py:105:        """Compatibility wrapper returning a UI-friendly result."""
+aura/agents/aegis/tools.py:392:    """Compatibility wrapper for setting environment variables."""
+aura/agents/aegis/tools.py:398:    """Compatibility wrapper for taking a screenshot."""
+aura/agents/phantom/tools.py:551:    """Compatibility wrapper for the requested schedule API."""
+aura/agents/cortex/__init__.py:7:    """Backward-compatible context compression helper."""
+aura/agents/echo/tools.py:221:    """Compatibility wrapper for the prompt's event API."""
+aura/agents/echo/tools.py:227:    """Compatibility wrapper that returns meetings in the requested range."""
+aura/agents/echo/tools.py:233:    """Compatibility wrapper for deleting an event."""
+aura/agents/echo/tools.py:239:    """Compatibility wrapper that stores a reminder note."""
+aura/agents/echo/tools.py:245:    """Compatibility wrapper returning the next available slot."""

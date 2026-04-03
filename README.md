@@ -1,83 +1,63 @@
----
-title: AURA Agent
-emoji: 🤖
-colorFrom: teal
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: true
----
-
-# AURA — Your Personal AI Agent
-
-Free. Open. For everyone.
-
-[Connect AURA to your PC →](pip install aura-client)
+AURA doesn't generate your college logo. It finds it in your template, copies it to the right position, and moves on. That's what a human would do. That's what intelligence means.
 
 # AURA
 
-AURA is a free, local-first AI agent stack with multi-provider routing, tool-calling, memory, browser/system/file automation, and a FastAPI control surface.
+AURA is a free, local-first personal AI firm. It is not a chatbot. It is a team of specialized agents that use files, browsers, memory, calendars, the system shell, and the UI around them to do real work on your PC.
 
-## What is included
+## What it does
 
-- `aura/` — backend runtime, agents, router, memory, UI API, and daemon
-- `frontend/` — web UI scaffold for the public app
-- `client/` — lightweight local companion package for PC control
-- `Dockerfile` — container build for cloud deployment
+- `IRIS` researches the web and academic sources.
+- `ATLAS` reads, writes, moves, and organizes files.
+- `LOGOS` runs and debugs code locally.
+- `AEGIS` inspects the system, clipboard, and processes.
+- `CORTEX` compresses long context and relays it.
+- `DIRECTOR` plans multi-step workflows with dependencies.
+- `ECHO` manages events, reminders, and schedules.
+- `ENSEMBLE` compares multiple model outputs in parallel.
+- `HERMES` automates browser and desktop UI tasks.
+- `LYRA` handles voice input and speech output.
+- `MNEME` stores and recalls memory locally.
+- `MOSAIC` synthesizes results from many sources.
+- `ORACLE DEEP` reasons about tradeoffs and uncertainty.
+- `PHANTOM` runs background automation and scheduled tasks.
+- `STREAM` tracks world-awareness feeds and digests.
+- `NEXUS` coordinates the whole system.
+- `MOBILE` controls Android devices over ADB.
 
-## Agents
+## Why it stays free
 
-- `IRIS` — web search and research
-- `ATLAS` — file system operations
-- `LOGOS` — code execution and debugging
-- `AEGIS` — system monitoring and process control
-- `CORTEX` — long-context chunking and relay workflows
-- `DIRECTOR` — workflow planning and execution
-- `ECHO` — calendar and reminders
-- `ENSEMBLE` — multi-model debate and synthesis
-- `HERMES` — browser automation
-- `LYRA` — speech I/O
-- `MNEME` — memory and recall
-- `MOSAIC` — multi-source synthesis
-- `ORACLE DEEP` — causal reasoning
-- `PHANTOM` — background automation
-- `STREAM` — world-awareness feeds and digests
-- `NEXUS` — top-level orchestration
+All model routing goes through `aura/core/llm_router.py` and prefers free tiers from providers like Groq, OpenRouter, Cerebras, Gemini, Mistral, Cloudflare, and XAI. Most tasks do not need an LLM at all.
 
-## Run locally
+## Install and run
 
 ```bash
+git clone https://github.com/Anamitra-Sarkar/AURA.git
+cd AURA
+pip install -r requirements.txt
+python aura/daemon.py --once
 python -m aura
 ```
 
-For a single smoke test:
+Open the UI in your browser after the daemon starts.
 
-```bash
-python aura/daemon.py --once
-```
+## Example workflows
 
-## Run with Docker
+1. Make a presentation from a template by reading the template, copying the logo-heavy slide, and filling text in place.
+2. Study mode: search the web, save facts to memory, and generate a short briefing.
+3. Form filling: browse to a site, fill fields, upload files, and submit.
+4. Code review: read a repo, run tests, and patch the broken file locally.
+5. "Be me": watch the system, keep reminders, and handle repetitive tasks in the background.
 
-```bash
-docker build -t aura .
-docker run -p 7860:7860 --env-file .env aura
-```
+## Philosophy
 
-## Environment variables
+Act, don't generate.
 
-- `GROQ_API_KEY`
-- `OPENROUTER_API_KEY`
-- `CEREBRAS_API_KEY`
-- `GEMINI_API_KEY`
-- `MISTRAL_API_KEY`
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
-- `XAI_API_KEY`
-- `JWT_SECRET`
-- `AURA_DATA_PATH`
+AURA copies what already exists. It reuses templates. It opens the real app. It edits the real file. It only calls a model when a simpler action cannot solve the task.
 
-## Notes
+## Contributing
 
-- All default workflows are designed to work without paid APIs.
-- Free-model routing is handled by the multi-provider router.
-- The frontend and client are intentionally lightweight so they can run on free infrastructure and user machines.
+Keep changes free-only, offline-friendly, and aligned with the existing agent architecture. Prefer surgical fixes, lazy imports where needed, and tests for new behavior.
+
+## License
+
+See `LICENSE`.
