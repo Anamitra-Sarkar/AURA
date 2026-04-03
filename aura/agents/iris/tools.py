@@ -229,15 +229,15 @@ def _synthesize(question: str, sources: list[str], text: str) -> str:
     router = _get_router()
     if router is not None:
         prompt = f"Question: {question}\nSources: {json.dumps(sources)}\nContent: {text}"
-        try:
-            if hasattr(router, "generate"):
-                result = router.generate(prompt)
-                return getattr(result, "content", result)
-            if hasattr(router, "chat"):
-                result = router.chat([{"role": "user", "content": prompt}])
-                return getattr(result, "content", result)
-        except Exception:
-            pass
+    try:
+        if hasattr(router, "generate"):
+            result = router.generate(prompt)
+            return getattr(result, "content", result)
+        if hasattr(router, "chat"):
+            result = router.chat([{"role": "user", "content": prompt}])
+            return getattr(result, "content", result)
+    except Exception:
+        LOGGER.debug("iris-synthesis-fallback", extra={"question": question}, exc_info=True)
     return text[:1000]
 
 
@@ -290,7 +290,7 @@ def search_academic(query: str, source: str = "arxiv", max_results: int = 10) ->
                 authors = [node.text or "" for node in entry.findall("atom:author/atom:name", ns)]
                 papers.append(Paper(title=title, authors=authors, abstract=abstract, url=url_value, pdf_url=url_value.replace("abs", "pdf"), published_date="", source="arxiv", citations=0))
         except Exception:
-            pass
+            LOGGER.debug("iris-arxiv-search-failed", extra={"query": query}, exc_info=True)
     if source in {"semantic_scholar", "both"}:
         try:
             api = f"https://api.semanticscholar.org/graph/v1/paper/search?query={urllib.parse.quote(query)}&limit={max_results}&fields=title,abstract,authors,url,year,citationCount"
@@ -299,14 +299,14 @@ def search_academic(query: str, source: str = "arxiv", max_results: int = 10) ->
             for item in payload.get("data", []):
                 papers.append(Paper(title=item.get("title", ""), authors=[author.get("name", "") for author in item.get("authors", [])], abstract=item.get("abstract", ""), url=item.get("url", ""), pdf_url=item.get("url", ""), published_date=str(item.get("year", "")), source="semantic_scholar", citations=int(item.get("citationCount", 0) or 0)))
         except Exception:
-            pass
+            LOGGER.debug("iris-semantic-scholar-search-failed", extra={"query": query}, exc_info=True)
     if papers and source == "arxiv":
         try:
             _, save_memory = _memory_tools()
             for paper in papers:
                 save_memory(f"paper:{paper.title}", paper.abstract, "technical", tags=["paper"], source="iris", confidence=0.9)
         except Exception:
-            pass
+            LOGGER.debug("iris-paper-cache-save-failed", extra={"query": query}, exc_info=True)
     return papers[:max_results]
 
 
@@ -392,7 +392,7 @@ def register_iris_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_iris_tools()

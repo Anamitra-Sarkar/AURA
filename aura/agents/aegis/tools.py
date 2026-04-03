@@ -260,7 +260,7 @@ def clipboard_read() -> ClipboardContent:
 
         _CLIPBOARD_CACHE = pyperclip.paste() or _CLIPBOARD_CACHE
     except Exception:
-        pass
+        LOGGER.debug("clipboard-read-fallback", exc_info=True)
     return ClipboardContent(text=_CLIPBOARD_CACHE, timestamp=datetime.now(timezone.utc))
 
 
@@ -273,7 +273,7 @@ def clipboard_write(content: str) -> OperationResult:
 
         pyperclip.copy(content)
     except Exception:
-        pass
+        LOGGER.debug("clipboard-write-fallback", exc_info=True)
     return OperationResult(True, "clipboard updated", {"length": len(content)})
 
 
@@ -424,7 +424,7 @@ def register_aegis_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_aegis_tools()

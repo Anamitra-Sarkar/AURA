@@ -72,7 +72,7 @@ def _parse_payload(raw: str, fallback: dict[str, Any]) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     except json.JSONDecodeError:
-        pass
+        LOGGER.debug("oracle-payload-parse-failed", exc_info=True)
     return fallback
 
 
@@ -410,7 +410,7 @@ def register_oracle_deep_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_oracle_deep_tools()

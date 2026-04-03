@@ -477,7 +477,7 @@ def register_hermes_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_hermes_tools()

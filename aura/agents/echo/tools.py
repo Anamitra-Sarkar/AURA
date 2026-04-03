@@ -238,7 +238,21 @@ def delete_event(event_id: str) -> bool:
 def remind_before(event_id: str, minutes_before: int) -> Reminder:
     """Compatibility wrapper that stores a reminder note."""
 
-    return set_reminder(f"Reminder for event {event_id}", datetime.now(timezone.utc).isoformat(), None)
+    connection = _connect()
+    try:
+        row = connection.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise EchoError(f"event not found: {event_id}")
+    event = _row_to_event(row)
+    event_start = datetime.fromisoformat(event.start)
+    reminder_time = event_start - timedelta(minutes=minutes_before)
+    return set_reminder(
+        text=f"Reminder: {event.title} starts in {minutes_before} minutes",
+        trigger_time=reminder_time.astimezone(timezone.utc).isoformat(),
+        repeat=None,
+    )
 
 
 def find_free_slot(duration_minutes: int, after: str, before: str) -> dict[str, str] | None:
@@ -422,7 +436,7 @@ def register_echo_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_echo_tools()

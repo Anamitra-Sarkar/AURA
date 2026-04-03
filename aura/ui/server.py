@@ -609,7 +609,7 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        pass
+        return
     finally:
         _CLIENT_CONNECTIONS.pop(user_id, None)
 
@@ -623,7 +623,7 @@ async def websocket_events(websocket: WebSocket) -> None:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        pass
+        return
     finally:
         _CONNECTED_CLIENTS.discard(websocket)
 

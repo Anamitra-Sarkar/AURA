@@ -53,7 +53,9 @@ class NexusOrchestrator:
             try:
                 await memory_module.auto_extract_memories(message, result.response)
             except Exception:
-                pass
+                from aura.core.logging import get_logger
+
+                get_logger(__name__, component="nexus").debug("memory-extraction-failed", extra={"user_id": user_id}, exc_info=True)
         return result
 
     def _select_agent(self, message: str) -> str:

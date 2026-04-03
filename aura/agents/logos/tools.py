@@ -293,7 +293,7 @@ def _parse_json_or_fallback(response: str, original_code: str) -> dict[str, str]
                 "diff": diff,
             }
     except json.JSONDecodeError:
-        pass
+        LOGGER.debug("logos-fix-parse-failed", exc_info=True)
     return {
         "explanation": response,
         "fixed_code": original_code,
@@ -314,7 +314,7 @@ def _parse_code_patch(response: str, language: str) -> dict[str, str]:
                 "language": str(payload.get("language", language)),
             }
     except json.JSONDecodeError:
-        pass
+        LOGGER.debug("logos-code-parse-failed", exc_info=True)
     return {
         "generated_code": response,
         "suggested_path": f"generated.{language}",
@@ -495,7 +495,7 @@ def register_logos_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_logos_tools()

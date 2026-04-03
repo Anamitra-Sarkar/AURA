@@ -101,7 +101,7 @@ async def _judge(task: str, responses: list[ModelResponse], judge_model: str, ti
         if isinstance(parsed, dict):
             return parsed
     except Exception:
-        pass
+        LOGGER.debug("ensemble-judge-fallback", exc_info=True)
     return {
         "agreements": [],
         "disagreements": [],
@@ -189,7 +189,7 @@ def register_ensemble_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_ensemble_tools()

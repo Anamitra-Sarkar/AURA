@@ -371,7 +371,7 @@ def register_lyra_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_lyra_tools()

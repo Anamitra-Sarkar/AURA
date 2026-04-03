@@ -433,11 +433,11 @@ def _register_default_tasks() -> None:
     try:
         phantom_tools.register_task("stream.fetch_all", _schedule_fetch_all, interval_hours=settings.fetch_interval_hours, run_on_startup=True, description="Fetch all configured STREAM sources")
     except Exception:
-        pass
+        LOGGER.debug("stream-task-registration-failed", extra={"task": "stream.fetch_all"}, exc_info=True)
     try:
         phantom_tools.register_task("stream.daily_digest", lambda: generate_daily_digest(), schedule="daily@08:00", run_on_startup=False, description="Generate the daily STREAM digest")
     except Exception:
-        pass
+        LOGGER.debug("stream-task-registration-failed", extra={"task": "stream.daily_digest"}, exc_info=True)
 
 
 def _schedule_fetch_all() -> Any:
@@ -464,7 +464,7 @@ def register_stream_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_stream_tools()

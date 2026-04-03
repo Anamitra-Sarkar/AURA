@@ -102,7 +102,7 @@ async def _map_source(source: SourceInput, content: str) -> dict[str, Any]:
                 "concepts": [str(item) for item in parsed.get("concepts", []) if item is not None],
             }
     except Exception:
-        pass
+        LOGGER.debug("mosaic-map-fallback", extra={"source": source.label}, exc_info=True)
     return _fallback_map(source, content)
 
 
@@ -145,7 +145,7 @@ async def _synthesize_output(task: str, output_format: str, source_payloads: lis
         if text:
             return text
     except Exception:
-        pass
+        LOGGER.debug("mosaic-synthesis-fallback", extra={"task": task}, exc_info=True)
     lines = [f"# {task}", "", "## Synthesis"]
     for payload in source_payloads:
         lines.append(f"- **{payload['label']}**: {', '.join(payload.get('claims', [])[:2]) or payload.get('content', '')[:120]}")
@@ -285,7 +285,7 @@ def register_mosaic_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_mosaic_tools()

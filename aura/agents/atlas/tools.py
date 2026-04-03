@@ -537,7 +537,7 @@ def register_atlas_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_atlas_tools()

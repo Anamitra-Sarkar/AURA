@@ -284,7 +284,7 @@ def _router_plan(instruction: str, context: dict[str, Any] | None = None) -> Wor
         asyncio.get_running_loop()
         return None
     except RuntimeError:
-        pass
+        LOGGER.debug("director-planner-no-running-loop")
     system_prompt = (
         "You are a workflow planner for AURA. Given a task instruction, decompose it into atomic steps. "
         "Each step calls exactly one tool from the available tool list. Return a JSON object matching the WorkflowPlan schema. Rules:\n"
@@ -631,7 +631,7 @@ def resume_interrupted_workflows() -> list[str]:
                 loop = asyncio.get_running_loop()
                 _RUNNING_TASKS[plan.id] = loop.create_task(resume_workflow(plan.id))
             except RuntimeError:
-                pass
+                LOGGER.debug("director-resume-skipped", extra={"workflow_id": plan.id})
     return resumed
 
 

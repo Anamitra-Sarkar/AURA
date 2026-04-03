@@ -209,28 +209,25 @@ def _get_state(key: str, default: str = "") -> str:
 
 def _task_next_run(schedule: str, last_run: datetime | None = None) -> datetime:
     base = last_run or _now()
+    named = {"hourly": 1 / 24, "daily": 1, "weekly": 7}
+    if schedule in named:
+        return base + timedelta(days=named[schedule])
     if schedule.startswith("every:"):
         try:
             hours = float(schedule.split(":", 1)[1])
             return base + timedelta(hours=hours)
         except Exception:
             return base + timedelta(hours=1)
-    if schedule == "hourly":
-        return base + timedelta(hours=1)
-    if schedule == "weekly":
-        return base + timedelta(days=7)
-    if schedule == "daily":
-        return base + timedelta(days=1)
     if schedule.startswith("daily@"):
         return base + timedelta(days=1)
     if schedule == "@startup":
         return base + timedelta(days=3650)
     try:
-        from schedule import every  # type: ignore
+        from croniter import croniter
 
-        _ = every
+        return croniter(schedule, base).get_next(datetime)
     except Exception:
-        pass
+        LOGGER.debug("phantom-cron-fallback", extra={"schedule": schedule})
     return base + timedelta(days=1)
 
 
@@ -332,7 +329,7 @@ def _get_handler(name: str) -> Callable[[], Any]:
             if callable(handler):
                 return handler
         except Exception:
-            pass
+            LOGGER.debug("phantom-handler-import-failed", extra={"handler": name}, exc_info=True)
     raise PhantomError(f"unknown handler: {name}")
 
 
@@ -354,11 +351,11 @@ def register_watch(name: str, type: str, target: str, check_interval_minutes: in
             loop = asyncio.get_running_loop()
             loop.create_task(_EVENT_BUS.subscribe(event_name, _handler))
         except RuntimeError:
-            pass
+            LOGGER.debug("phantom-watch-subscribe-skipped", extra={"watch_id": watch.id})
         try:
             atlas_tools.watch_folder(target, event_name)
         except Exception:
-            pass
+            LOGGER.debug("phantom-folder-watch-failed", extra={"watch_id": watch.id, "target": target}, exc_info=True)
     return watch
 
 
@@ -552,7 +549,7 @@ def schedule_task(name: str, cron_expression: str, instruction: str, enabled: bo
 
     task = register_task(
         task_name=name,
-        handler=lambda: instruction,
+        handler=lambda: _run_instruction(instruction),
         schedule=cron_expression,
         description=instruction,
     )
@@ -662,7 +659,23 @@ def register_phantom_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
+
+
+def _run_instruction(instruction: str) -> Any:
+    from aura.core.agent_loop import ReActAgentLoop
+    from aura.core.llm_router import OllamaRouter
+    from aura.core.tools import get_tool_registry
+
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        agent_loop = ReActAgentLoop(router=OllamaRouter(model=CONFIG.primary_model.name, host=CONFIG.primary_model.host), registry=get_tool_registry())
+        result = loop.run_until_complete(agent_loop.run(instruction))
+        return {"ok": result.ok, "answer": result.answer, "error": result.error, "steps": result.steps}
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
 
 register_phantom_tools()

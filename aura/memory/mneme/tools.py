@@ -467,7 +467,7 @@ def register_memory_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_memory_tools()

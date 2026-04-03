@@ -120,7 +120,7 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
             )
         )
     except ValueError:
-        pass
+        logger.debug("system-status-tool-already-registered")
     orchestrator = None
     router: Any
     if getattr(config, "router", None) is not None:
@@ -216,7 +216,7 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         while True:
             await asyncio.sleep(1)
     except asyncio.CancelledError:
-        pass
+        logger.debug("daemon-cancelled")
     finally:
         phantom_task.cancel()
         ui_task = getattr(state, "ui_task", None)

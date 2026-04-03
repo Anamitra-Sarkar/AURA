@@ -154,7 +154,7 @@ class QuotaTracker:
                 if datetime.fromisoformat(rate_limited_until) > datetime.now(timezone.utc):
                     return False
             except Exception:
-                pass
+                return False
         limit = self._limit_for(provider, model)
         if limit.requests is not None and row["requests_used_today"] >= limit.requests:
             return False

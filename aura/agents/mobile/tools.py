@@ -110,7 +110,7 @@ def register_mobile_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_mobile_tools()

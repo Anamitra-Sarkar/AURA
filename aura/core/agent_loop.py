@@ -192,7 +192,7 @@ class ReActAgentLoop:
             if isinstance(parsed, dict):
                 return parsed
         except json.JSONDecodeError:
-            pass
+            return {"type": "final", "response": content}
         return {"type": "final", "response": content}
 
     @staticmethod
