@@ -28,14 +28,36 @@ class AuthRecord:
     username: str
 
 
+# ---------------------------------------------------------------------------
+# On HuggingFace Spaces the container filesystem is ephemeral — everything
+# outside /data is wiped on every restart.  When we detect we are running
+# inside a HF Space we redirect the users database to /data/aura so that
+# accounts survive restarts.  On any other host we use data_path as given.
+# ---------------------------------------------------------------------------
+def _resolve_db_root(data_path: Path) -> Path:
+    if os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"):
+        persistent = Path("/data/aura")
+        persistent.mkdir(parents=True, exist_ok=True)
+        return persistent
+    return data_path
+
+
 class AuthManager:
     """Register users and issue signed tokens."""
 
     def __init__(self, data_path: str | Path, secret: str | None = None) -> None:
-        self.data_path = Path(data_path)
+        self.data_path = _resolve_db_root(Path(data_path))
         self.data_path.mkdir(parents=True, exist_ok=True)
         self.users_db = self.data_path / "users.db"
-        self.secret = (secret or os.getenv("JWT_SECRET") or secrets.token_urlsafe(32)).encode("utf-8")
+        # Secret priority: explicit arg → AURA_JWT_SECRET env → JWT_SECRET env
+        # → random (tokens invalidated on restart — only for local dev).
+        resolved_secret = (
+            secret
+            or os.getenv("AURA_JWT_SECRET")
+            or os.getenv("JWT_SECRET")
+            or secrets.token_urlsafe(32)
+        )
+        self.secret = resolved_secret.encode("utf-8")
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
@@ -46,10 +68,10 @@ class AuthManager:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
-                    user_id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
+                    user_id       TEXT PRIMARY KEY,
+                    username      TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at    TEXT NOT NULL
                 )
                 """
             )
@@ -58,7 +80,12 @@ class AuthManager:
     def _hash_password(self, password: str) -> str:
         salt = secrets.token_bytes(16)
         digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
-        return "pbkdf2$" + base64.urlsafe_b64encode(salt).decode("ascii") + "$" + base64.urlsafe_b64encode(digest).decode("ascii")
+        return (
+            "pbkdf2$"
+            + base64.urlsafe_b64encode(salt).decode("ascii")
+            + "$"
+            + base64.urlsafe_b64encode(digest).decode("ascii")
+        )
 
     def _verify_password(self, password: str, stored: str) -> bool:
         if not stored.startswith("pbkdf2$"):
@@ -97,25 +124,36 @@ class AuthManager:
 
     def _issue_token(self, user_id: str) -> str:
         now = datetime.now(timezone.utc)
-        payload = {"sub": user_id, "iat": int(now.timestamp()), "exp": int((now + timedelta(days=7)).timestamp())}
+        payload = {
+            "sub": user_id,
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(days=7)).timestamp()),
+        }
         return self._sign({"alg": "HS256", "typ": "JWT"}, payload)
 
     def register(self, username: str, password: str) -> dict[str, str]:
         user_id = secrets.token_hex(16)
         password_hash = self._hash_password(password)
-        with closing(self._conn()) as conn:
-            conn.execute(
-                "INSERT INTO users (user_id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, username, password_hash, datetime.now(timezone.utc).isoformat()),
-            )
-            conn.commit()
-        return {"user_id": user_id, "jwt_token": self._issue_token(user_id)}
+        try:
+            with closing(self._conn()) as conn:
+                conn.execute(
+                    "INSERT INTO users (user_id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                    (user_id, username, password_hash, datetime.now(timezone.utc).isoformat()),
+                )
+                conn.commit()
+        except sqlite3.IntegrityError as exc:
+            raise AuthError(f"username '{username}' is already taken") from exc
+        # Always return 'token' (same key as login) so the frontend
+        # can store it identically regardless of which endpoint was called.
+        return {"user_id": user_id, "token": self._issue_token(user_id)}
 
     def login(self, username: str, password: str) -> dict[str, str]:
         with closing(self._conn()) as conn:
-            row = conn.execute("SELECT user_id, password_hash FROM users WHERE username=?", (username,)).fetchone()
+            row = conn.execute(
+                "SELECT user_id, password_hash FROM users WHERE username=?", (username,)
+            ).fetchone()
         if row is None:
-            raise AuthError("user not found")
+            raise AuthError("user not found — please register first")
         user_id, password_hash = row
         if not self._verify_password(password, password_hash):
             raise AuthError("invalid credentials")
@@ -138,7 +176,9 @@ class AuthManager:
         except Exception:
             revoked = set()
         revoked.add(token)
-        revoked_file.write_text(json.dumps(sorted(revoked), ensure_ascii=True, indent=2), encoding="utf-8")
+        revoked_file.write_text(
+            json.dumps(sorted(revoked), ensure_ascii=True, indent=2), encoding="utf-8"
+        )
         return True
 
     def get_user_data_path(self, user_id: str) -> Path:
@@ -154,7 +194,8 @@ def _default_manager() -> AuthManager:
     global _DEFAULT_AUTH_MANAGER
     if _DEFAULT_AUTH_MANAGER is None:
         config = load_config()
-        secret = getattr(getattr(config, "auth", None), "secret_key", None)
+        # AuthSettings uses .secret (not .secret_key) — read it correctly.
+        secret = getattr(getattr(config, "auth", None), "secret", None) or None
         _DEFAULT_AUTH_MANAGER = AuthManager(config.paths.data_dir, secret=secret)
     return _DEFAULT_AUTH_MANAGER
 

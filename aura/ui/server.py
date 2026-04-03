@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 from dataclasses import dataclass, field, is_dataclass, asdict
 from datetime import datetime, timezone
@@ -82,10 +83,6 @@ AUTH_EXEMPT_PATHS = {
     "/api/auth/register",
 }
 
-# ---------------------------------------------------------------------------
-# Allowed origins for CORS.
-# Add any additional deployment URLs (Vercel preview URLs, custom domains) here.
-# ---------------------------------------------------------------------------
 _CORS_ORIGINS = [
     "https://aura-khaki-seven.vercel.app",
     "http://localhost:5173",
@@ -129,20 +126,22 @@ class NexusRuntime:
 def _default_runtime() -> NexusRuntime:
     config = load_config()
     event_bus = EventBus()
-    # ---------------------------------------------------------------------------
-    # AuthManager is always initialised so login/register work out of the box.
-    # The JWT secret comes from the AURA_JWT_SECRET env var (set this in HF
-    # Secrets / Vercel env). Falls back to a random secret per-process which
-    # means tokens are invalidated on every restart — fine for dev, set the
-    # env var in production so tokens survive restarts.
-    # ---------------------------------------------------------------------------
-    auth_secret = getattr(getattr(config, "auth", None), "secret_key", None)
+    # Read secret from config.auth.secret (correct attr name) then env fallback.
+    auth_secret = (
+        getattr(getattr(config, "auth", None), "secret", None)
+        or os.getenv("AURA_JWT_SECRET")
+        or os.getenv("JWT_SECRET")
+        or None
+    )
     auth_manager = AuthManager(config.paths.data_dir, secret=auth_secret)
     return NexusRuntime(
         config=config,
         event_bus=event_bus,
         agent_loop=ReActAgentLoop(
-            router=OllamaRouter(model=config.primary_model.name, host=config.primary_model.host),
+            router=OllamaRouter(
+                model=config.primary_model.name,
+                host=config.primary_model.host,
+            ),
             registry=get_tool_registry(),
             event_bus=event_bus,
         ),
@@ -163,7 +162,13 @@ _CLIENT_TOOL_FUTURES: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _EVENT_BRIDGE_READY = False
 
 
-def configure_runtime(config: AppConfig | None = None, event_bus: EventBus | None = None, agent_loop: ReActAgentLoop | None = None, orchestrator: NexusOrchestrator | None = None, auth_manager: AuthManager | None = None) -> None:
+def configure_runtime(
+    config: AppConfig | None = None,
+    event_bus: EventBus | None = None,
+    agent_loop: ReActAgentLoop | None = None,
+    orchestrator: NexusOrchestrator | None = None,
+    auth_manager: AuthManager | None = None,
+) -> None:
     """Update the runtime dependencies used by the UI."""
 
     global _RUNTIME, _EVENT_BRIDGE_READY
@@ -187,8 +192,7 @@ def get_runtime() -> NexusRuntime:
 
 
 def _auth_manager() -> AuthManager | None:
-    runtime = get_runtime()
-    return runtime.auth_manager
+    return get_runtime().auth_manager
 
 
 def _require_token(request: Request) -> str | None:
@@ -223,7 +227,10 @@ def _serialize(value: Any) -> Any:
 
 def _workflow_summary(plan: Any) -> dict[str, Any]:
     steps = list(getattr(plan, "steps", []) or [])
-    current_step = next((step for step in steps if getattr(step, "status", "") not in {"done", "skipped"}), steps[-1] if steps else None)
+    current_step = next(
+        (s for s in steps if getattr(s, "status", "") not in {"done", "skipped"}),
+        steps[-1] if steps else None,
+    )
     return {
         "id": getattr(plan, "id", ""),
         "name": getattr(plan, "name", ""),
@@ -291,9 +298,13 @@ def build_state_snapshot(runtime: NexusRuntime | None = None) -> dict[str, Any]:
     except Exception:
         memories = []
     return {
-        "active_workflows": [_workflow_summary(workflow) for workflow in workflows if getattr(workflow, "status", "") in {"running", "paused", "pending_approval", "waiting_approval", "planned"}],
-        "phantom_tasks": [_phantom_summary(task) for task in phantom_tasks],
-        "recent_memories": [_memory_summary(memory) for memory in memories],
+        "active_workflows": [
+            _workflow_summary(w)
+            for w in workflows
+            if getattr(w, "status", "") in {"running", "paused", "pending_approval", "waiting_approval", "planned"}
+        ],
+        "phantom_tasks": [_phantom_summary(t) for t in phantom_tasks],
+        "recent_memories": [_memory_summary(m) for m in memories],
         "lyra_status": _lyra_status(runtime),
         "system_health": _system_health(),
     }
@@ -305,24 +316,29 @@ async def _broadcast_event(topic: str, payload: Any) -> None:
         "data": _serialize(payload),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    dead_clients: list[WebSocket] = []
+    dead: list[WebSocket] = []
     for client in list(_CONNECTED_CLIENTS):
         try:
             await client.send_json(message)
         except Exception:
-            dead_clients.append(client)
-    for client in dead_clients:
+            dead.append(client)
+    for client in dead:
         _CONNECTED_CLIENTS.discard(client)
 
 
 async def _send_client_message(user_id: str, payload: dict[str, Any]) -> None:
-    websocket = _CLIENT_CONNECTIONS.get(user_id)
-    if websocket is None:
+    ws = _CLIENT_CONNECTIONS.get(user_id)
+    if ws is None:
         raise ConnectionError("client not connected")
-    await websocket.send_json(payload)
+    await ws.send_json(payload)
 
 
-async def request_local_tool(user_id: str, tool: str, args: dict[str, Any], timeout_seconds: float = 120.0) -> dict[str, Any]:
+async def request_local_tool(
+    user_id: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_seconds: float = 120.0,
+) -> dict[str, Any]:
     call_id = secrets.token_hex(16)
     loop = asyncio.get_running_loop()
     future: asyncio.Future[dict[str, Any]] = loop.create_future()
@@ -330,12 +346,7 @@ async def request_local_tool(user_id: str, tool: str, args: dict[str, Any], time
     try:
         await _send_client_message(
             user_id,
-            {
-                "action": "tool_call",
-                "tool": tool,
-                "args": args,
-                "call_id": call_id,
-            },
+            {"action": "tool_call", "tool": tool, "args": args, "call_id": call_id},
         )
         return await asyncio.wait_for(future, timeout=timeout_seconds)
     finally:
@@ -378,10 +389,6 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan)
 
-# ---------------------------------------------------------------------------
-# CORS — must be added before any other middleware or route registration.
-# Allows the Vercel-hosted frontend and local dev server to call this API.
-# ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
@@ -390,7 +397,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount /assets so Vite-built JS/CSS bundles are served correctly
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
@@ -399,8 +405,10 @@ if ASSETS_DIR.exists():
 async def auth_middleware(request: Request, call_next):
     runtime = get_runtime()
     path = request.url.path
-    if runtime.auth_manager is not None and path not in AUTH_EXEMPT_PATHS and (
-        path.startswith("/api/") or path.startswith("/a2a/") or path.startswith("/mcp/")
+    if (
+        runtime.auth_manager is not None
+        and path not in AUTH_EXEMPT_PATHS
+        and (path.startswith("/api/") or path.startswith("/a2a/") or path.startswith("/mcp/"))
     ):
         _require_token(request)
     return await call_next(request)
@@ -408,8 +416,6 @@ async def auth_middleware(request: Request, call_next):
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
-    """Serve the single-file frontend."""
-
     if INDEX_PATH.exists():
         return HTMLResponse(INDEX_PATH.read_text(encoding="utf-8"))
     return HTMLResponse(PLACEHOLDER_INDEX)
@@ -500,7 +506,9 @@ async def api_health() -> dict[str, Any]:
 
 
 @app.post("/api/message", response_model=None)
-async def api_message(payload: MessageRequest, request: Request) -> StreamingResponse | dict[str, Any]:
+async def api_message(
+    payload: MessageRequest, request: Request
+) -> StreamingResponse | dict[str, Any]:
     runtime = get_runtime()
     user_id = _require_token(request) or "local"
     accept = request.headers.get("accept", "")
@@ -512,25 +520,34 @@ async def api_message(payload: MessageRequest, request: Request) -> StreamingRes
 
     async def _emit_result_events(result: Any):
         yield f"data: {json.dumps({'token': '', 'done': False}, ensure_ascii=True)}\n\n"
-        response_text = str(_result_value(result, "response", "") or "")
-        for chunk in response_text.split():
+        for chunk in str(_result_value(result, "response", "") or "").split():
             yield f"data: {json.dumps({'token': chunk + ' ', 'done': False}, ensure_ascii=True)}\n\n"
-        yield f"data: {json.dumps({'token': '', 'done': True, 'tools_called': _result_value(result, 'tools_called', []), 'steps': _result_value(result, 'steps', []), 'reasoning_used': bool(_result_value(result, 'reasoning_used', False)), 'used_ensemble': bool(_result_value(result, 'used_ensemble', False))}, ensure_ascii=True)}\n\n"
+        yield (
+            f"data: {json.dumps({'token': '', 'done': True, 'tools_called': _result_value(result, 'tools_called', []), 'steps': _result_value(result, 'steps', []), 'reasoning_used': bool(_result_value(result, 'reasoning_used', False)), 'used_ensemble': bool(_result_value(result, 'used_ensemble', False))}, ensure_ascii=True)}\n\n"
+        )
 
     async def event_stream():
         if runtime.orchestrator is not None:
             try:
-                stream = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance, stream=True)
+                stream = await runtime.orchestrator.handle(
+                    payload.text, user_id, {}, importance=payload.importance, stream=True
+                )
             except TypeError:
-                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+                result = await runtime.orchestrator.handle(
+                    payload.text, user_id, {}, importance=payload.importance
+                )
                 async for event in _emit_result_events(result):
                     yield event
                 return
         else:
             try:
-                stream = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance, stream=True)
+                stream = await runtime.agent_loop.handle_message(
+                    payload.text, importance=payload.importance, stream=True
+                )
             except TypeError:
-                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
+                result = await runtime.agent_loop.handle_message(
+                    payload.text, importance=payload.importance
+                )
                 async for event in _emit_result_events(result):
                     yield event
                 return
@@ -540,15 +557,13 @@ async def api_message(payload: MessageRequest, request: Request) -> StreamingRes
 
     if "text/event-stream" not in accept:
         if runtime.orchestrator is not None:
-            try:
-                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
-            except TypeError:
-                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance, stream=False)
+            result = await runtime.orchestrator.handle(
+                payload.text, user_id, {}, importance=payload.importance
+            )
         else:
-            try:
-                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
-            except TypeError:
-                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance, stream=False)
+            result = await runtime.agent_loop.handle_message(
+                payload.text, importance=payload.importance
+            )
         return {
             "response": _result_value(result, "response", ""),
             "used_ensemble": _result_value(result, "used_ensemble", False),
@@ -557,7 +572,11 @@ async def api_message(payload: MessageRequest, request: Request) -> StreamingRes
             "steps": _result_value(result, "steps", []),
         }
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/a2a/agents")
@@ -565,8 +584,8 @@ async def a2a_agents(include_hidden: bool = False) -> list[dict[str, Any]]:
     registry = AgentRegistry()
     cards = registry.list_all()
     if not include_hidden:
-        cards = [card for card in cards if getattr(card, "id", "") not in {"mobile", "nexus"}]
-    return [_serialize(card) for card in cards]
+        cards = [c for c in cards if getattr(c, "id", "") not in {"mobile", "nexus"}]
+    return [_serialize(c) for c in cards]
 
 
 @app.get("/a2a/agents/{agent_id}")
@@ -579,10 +598,16 @@ async def a2a_agent(agent_id: str) -> dict[str, Any]:
 
 
 @app.post("/a2a/agents/{agent_id}/tasks")
-async def a2a_agent_task(agent_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def a2a_agent_task(
+    agent_id: str, payload: dict[str, Any], request: Request
+) -> dict[str, Any]:
     runtime = get_runtime()
     _require_token(request)
-    dispatcher = runtime.orchestrator.dispatcher if runtime.orchestrator is not None else A2ADispatcher(AgentRegistry())
+    dispatcher = (
+        runtime.orchestrator.dispatcher
+        if runtime.orchestrator is not None
+        else A2ADispatcher(AgentRegistry())
+    )
     task = {
         "task_id": payload.get("task_id") or secrets.token_hex(16),
         "from_agent": payload.get("from_agent", "director"),
@@ -604,15 +629,16 @@ async def mcp_tools() -> list[dict[str, Any]]:
 
 
 @app.post("/mcp/tools/{agent_id}/{tool_name}")
-async def mcp_call(agent_id: str, tool_name: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def mcp_call(
+    agent_id: str, tool_name: str, payload: dict[str, Any], request: Request
+) -> dict[str, Any]:
     _require_token(request)
     return await call_mcp_tool(agent_id, tool_name, payload.get("arguments", {}))
 
 
 @app.get("/api/workflows")
 async def api_workflows() -> list[dict[str, Any]]:
-    workflows = director_tools.list_workflows(status_filter=None, limit=100)
-    return [_serialize(workflow) for workflow in workflows]
+    return [_serialize(w) for w in director_tools.list_workflows(status_filter=None, limit=100)]
 
 
 @app.post("/api/workflows/{workflow_id}/pause")
@@ -630,7 +656,9 @@ async def api_resume_workflow(workflow_id: str) -> Any:
 
 @app.post("/api/workflows/{workflow_id}/approve/{step_id}")
 async def api_approve_step(workflow_id: str, step_id: str) -> Any:
-    return _serialize(director_tools.approve_step(workflow_id, step_id, True, "Approved via NEXUS UI"))
+    return _serialize(
+        director_tools.approve_step(workflow_id, step_id, True, "Approved via NEXUS UI")
+    )
 
 
 @app.delete("/api/workflows/{workflow_id}")
@@ -639,22 +667,23 @@ async def api_cancel_workflow(workflow_id: str) -> Any:
 
 
 @app.get("/api/memories")
-async def api_memories(query: str = "", category: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+async def api_memories(
+    query: str = "", category: str | None = None, limit: int = 20
+) -> list[dict[str, Any]]:
     if query:
         results = recall_memory(query, top_k=limit, category_filter=category)
         return [
             {
-                "id": result.record.id,
-                "key": result.record.key,
-                "category": result.record.category,
-                "preview": result.record.value[:160],
-                "timestamp": result.record.updated_at,
-                "similarity_score": result.similarity_score,
+                "id": r.record.id,
+                "key": r.record.key,
+                "category": r.record.category,
+                "preview": r.record.value[:160],
+                "timestamp": r.record.updated_at,
+                "similarity_score": r.similarity_score,
             }
-            for result in results
+            for r in results
         ]
-    memories = list_memories(category=category, limit=limit)
-    return [_memory_summary(memory) for memory in memories]
+    return [_memory_summary(m) for m in list_memories(category=category, limit=limit)]
 
 
 @app.get("/api/memories/count")
@@ -677,7 +706,9 @@ async def api_oracle_report(report_id: str) -> Any:
 
 @app.post("/api/oracle/analyze")
 async def api_oracle_analyze(payload: OracleAnalyzeRequest) -> Any:
-    return _serialize(await oracle_tools.analyze_decision(payload.question, payload.context, payload.use_iris))
+    return _serialize(
+        await oracle_tools.analyze_decision(payload.question, payload.context, payload.use_iris)
+    )
 
 
 @app.post("/api/oracle/whatif")
@@ -693,10 +724,9 @@ async def api_audit_log(limit: int = 100) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for line in audit_path.read_text(encoding="utf-8").splitlines()[-limit:]:
         try:
-            payload = json.loads(line)
+            entries.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-        entries.append(payload)
     return entries
 
 
@@ -716,17 +746,17 @@ async def api_voice_mode(payload: VoiceModeRequest) -> dict[str, Any]:
 
 @app.get("/api/stream/sources")
 async def api_stream_sources() -> list[dict[str, Any]]:
-    return [_serialize(source) for source in stream_tools.list_stream_sources()]
+    return [_serialize(s) for s in stream_tools.list_stream_sources()]
 
 
 @app.get("/api/stream/items")
 async def api_stream_items(limit: int = 20) -> list[dict[str, Any]]:
-    return [_serialize(item) for item in stream_tools.get_unread_items(limit=limit)]
+    return [_serialize(i) for i in stream_tools.get_unread_items(limit=limit)]
 
 
 @app.post("/api/stream/fetch")
 async def api_stream_fetch(source_id: str | None = None) -> list[dict[str, Any]]:
-    return [_serialize(item) for item in await stream_tools.fetch_stream(source_id)]
+    return [_serialize(i) for i in await stream_tools.fetch_stream(source_id)]
 
 
 @app.post("/api/stream/digest")
@@ -741,14 +771,18 @@ async def api_stream_read(item_id: str) -> Any:
 
 @app.get("/api/phantom/tasks")
 async def api_phantom_tasks() -> list[dict[str, Any]]:
-    return [_serialize(task) for task in phantom_tools.list_workflows()]
+    return [_serialize(t) for t in phantom_tools.list_workflows()]
 
 
 @app.post("/api/phantom/tasks/{task_id}/toggle")
-async def api_phantom_toggle_task(task_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+async def api_phantom_toggle_task(
+    task_id: str, payload: dict[str, Any] = Body(...)
+) -> dict[str, Any]:
     enabled = bool(payload.get("enabled", True))
     result = phantom_tools.enable_task(task_id) if enabled else phantom_tools.disable_task(task_id)
-    task = next((task for task in phantom_tools.list_workflows() if getattr(task, "id", "") == task_id), None)
+    task = next(
+        (t for t in phantom_tools.list_workflows() if getattr(t, "id", "") == task_id), None
+    )
     return {"success": bool(result), "task": _serialize(task) if task is not None else None}
 
 
@@ -760,21 +794,33 @@ async def api_aegis_screenshot(payload: dict[str, Any] = Body(...)) -> dict[str,
 
 @app.post("/api/mosaic/synthesize")
 async def api_mosaic_synthesize(payload: dict[str, Any] = Body(...)) -> Any:
-    sources = [mosaic_tools.SourceInput(**source) for source in payload.get("sources", [])]
-    result = await mosaic_tools.synthesize(str(payload.get("task", "")), sources, str(payload.get("output_format", "markdown")), payload.get("max_length"))
+    sources = [mosaic_tools.SourceInput(**s) for s in payload.get("sources", [])]
+    result = await mosaic_tools.synthesize(
+        str(payload.get("task", "")),
+        sources,
+        str(payload.get("output_format", "markdown")),
+        payload.get("max_length"),
+    )
     return _serialize(result)
 
 
 @app.post("/api/mosaic/merge-code")
 async def api_mosaic_merge_code(payload: dict[str, Any] = Body(...)) -> Any:
-    sources = [mosaic_tools.SourceInput(**source) for source in payload.get("sources", [])]
-    result = await mosaic_tools.merge_code(sources, str(payload.get("task", "")), str(payload.get("language", "python")))
+    sources = [mosaic_tools.SourceInput(**s) for s in payload.get("sources", [])]
+    result = await mosaic_tools.merge_code(
+        sources, str(payload.get("task", "")), str(payload.get("language", "python"))
+    )
     return _serialize(result)
 
 
 @app.post("/api/mosaic/diff")
 async def api_mosaic_diff(payload: dict[str, Any] = Body(...)) -> Any:
-    return _serialize(mosaic_tools.diff_sources(mosaic_tools.SourceInput(**payload["source_a"]), mosaic_tools.SourceInput(**payload["source_b"])))
+    return _serialize(
+        mosaic_tools.diff_sources(
+            mosaic_tools.SourceInput(**payload["source_a"]),
+            mosaic_tools.SourceInput(**payload["source_b"]),
+        )
+    )
 
 
 @app.get("/api/mosaic/{mosaic_id}")
@@ -784,7 +830,10 @@ async def api_mosaic_cite(mosaic_id: str) -> dict[str, Any]:
 
 @app.websocket("/ws/client/{user_id}")
 async def websocket_client(websocket: WebSocket, user_id: str) -> None:
-    token = websocket.query_params.get("token") or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    token = (
+        websocket.query_params.get("token")
+        or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    )
     manager = _auth_manager()
     if manager is not None:
         if not token:
@@ -800,19 +849,24 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
             return
     await websocket.accept()
     _CLIENT_CONNECTIONS[user_id] = websocket
-    await websocket.send_json({"type": "hello", "platform": "linux", "capabilities": ["atlas", "aegis", "hermes", "lyra"], "aura_version": aura.__version__})
+    await websocket.send_json(
+        {
+            "type": "hello",
+            "platform": "linux",
+            "capabilities": ["atlas", "aegis", "hermes", "lyra"],
+            "aura_version": aura.__version__,
+        }
+    )
     try:
         while True:
             message = await websocket.receive_text()
             try:
-                payload = json.loads(message)
+                data = json.loads(message)
             except json.JSONDecodeError:
                 continue
-            if not isinstance(payload, dict):
+            if not isinstance(data, dict) or data.get("action") != "tool_result":
                 continue
-            if payload.get("action") != "tool_result":
-                continue
-            call_id = str(payload.get("call_id", ""))
+            call_id = str(data.get("call_id", ""))
             if not call_id:
                 continue
             entry = _CLIENT_TOOL_FUTURES.get(call_id)
@@ -821,17 +875,16 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
             future_user_id, future = entry
             if future_user_id != user_id or future.done():
                 continue
-            error = payload.get("error")
-            if error:
-                future.set_result({"result": payload.get("result"), "error": str(error)})
-            else:
-                future.set_result({"result": payload.get("result"), "error": None})
+            error = data.get("error")
+            future.set_result(
+                {"result": data.get("result"), "error": str(error) if error else None}
+            )
     except WebSocketDisconnect:
         return
     finally:
         _CLIENT_CONNECTIONS.pop(user_id, None)
-        for call_id, (future_user_id, future) in list(_CLIENT_TOOL_FUTURES.items()):
-            if future_user_id != user_id:
+        for call_id, (fuid, future) in list(_CLIENT_TOOL_FUTURES.items()):
+            if fuid != user_id:
                 continue
             if not future.done():
                 future.set_exception(ConnectionError("local client disconnected"))
@@ -840,7 +893,10 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
 
 @app.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token") or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    token = (
+        websocket.query_params.get("token")
+        or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    )
     manager = _auth_manager()
     if manager is not None:
         if not token:
@@ -853,7 +909,13 @@ async def websocket_events(websocket: WebSocket) -> None:
             return
     await websocket.accept()
     _CONNECTED_CLIENTS.add(websocket)
-    await websocket.send_json({"type": "state_snapshot", "data": build_state_snapshot(), "timestamp": datetime.now(timezone.utc).isoformat()})
+    await websocket.send_json(
+        {
+            "type": "state_snapshot",
+            "data": build_state_snapshot(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     try:
         while True:
             await websocket.receive_text()
@@ -864,20 +926,18 @@ async def websocket_events(websocket: WebSocket) -> None:
 
 
 async def start_server() -> None:
-    """Run the FastAPI app with uvicorn."""
-
     runtime = get_runtime()
     ui = getattr(runtime.config, "ui", None)
     if ui is None or not ui.enabled:
         return
-    config = uvicorn.Config(app, host=ui.host, port=ui.port, log_level="warning", access_log=False)
+    config = uvicorn.Config(
+        app, host=ui.host, port=ui.port, log_level="warning", access_log=False
+    )
     server = uvicorn.Server(config)
     await server.serve()
 
 
 def start_server_task() -> asyncio.Task[None] | None:
-    """Start the UI server in the background."""
-
     runtime = get_runtime()
     ui = getattr(runtime.config, "ui", None)
     if ui is None or not ui.enabled:
