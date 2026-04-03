@@ -29,6 +29,22 @@ desktop.ini
 node_modules/
 frontend/dist/
 client/aura_client.egg-info/
+
+# Runtime data — never commit these
 var/data/*.db
 var/data/*.sqlite
 var/data/*.sqlite3
+aura/var/data/*.db
+aura/var/data/*.sqlite
+aura/var/data/*.sqlite3
+aura/var/data/chroma/
+aura/var/data/mneme.db
+aura/var/data/director.db
+aura/var/data/phantom.db
+aura/var/data/users.db
+aura/var/data/audit.log
+aura/var/data/models/
+
+# Screenshots and generated assets
+aura/var/screenshots/
+~/.aura/
