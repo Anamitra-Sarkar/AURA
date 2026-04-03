@@ -13,6 +13,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -80,6 +81,16 @@ AUTH_EXEMPT_PATHS = {
     "/api/auth/login",
     "/api/auth/register",
 }
+
+# ---------------------------------------------------------------------------
+# Allowed origins for CORS.
+# Add any additional deployment URLs (Vercel preview URLs, custom domains) here.
+# ---------------------------------------------------------------------------
+_CORS_ORIGINS = [
+    "https://aura-khaki-seven.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 
 
 class MessageRequest(BaseModel):
@@ -352,6 +363,18 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# CORS — must be added before any other middleware or route registration.
+# Allows the Vercel-hosted frontend and local dev server to call this API.
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount /assets so Vite-built JS/CSS bundles are served correctly
 if ASSETS_DIR.exists():
