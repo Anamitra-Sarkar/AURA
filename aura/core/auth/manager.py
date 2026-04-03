@@ -29,13 +29,44 @@ class AuthRecord:
 
 
 # ---------------------------------------------------------------------------
-# On HuggingFace Spaces the container filesystem is ephemeral — everything
-# outside /data is wiped on every restart.  When we detect we are running
-# inside a HF Space we redirect the users database to /data/aura so that
-# accounts survive restarts.  On any other host we use data_path as given.
+# Persistence strategy for HuggingFace Spaces:
+#   HF mounts a persistent volume at /data.  Everything else in the container
+#   is ephemeral and is wiped on every restart/rebuild.
+#
+#   We detect HF by probing whether /data is actually a writable directory
+#   (more reliable than checking env vars that differ across HF plan tiers).
+#   If /data is writable we always store users.db + quota.db there so that
+#   accounts and JWT secret survive restarts.
+#
+#   On a regular host (local dev, VPS, Docker) /data usually doesn't exist,
+#   so we fall back to the configured data_dir (e.g. var/data/).
 # ---------------------------------------------------------------------------
+def _is_hf_space() -> bool:
+    """Return True when running inside a HuggingFace Space container."""
+    # Any of these vars being set is a reliable HF signal
+    for var in ("SPACE_ID", "HF_SPACE_ID", "SPACE_AUTHOR_NAME", "SPACE_REPO_ID"):
+        if os.getenv(var):
+            return True
+    # Last-resort: /data exists and is writable (HF persistent storage)
+    data_dir = Path("/data")
+    if data_dir.is_dir():
+        try:
+            probe = data_dir / ".aura_probe"
+            probe.touch()
+            probe.unlink()
+            return True
+        except OSError:
+            pass
+    return False
+
+
 def _resolve_db_root(data_path: Path) -> Path:
-    if os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"):
+    """Return the directory where users.db and jwt_secret should live.
+
+    On HF Spaces this is always /data/aura (persistent across restarts).
+    Everywhere else it is ``data_path`` as configured.
+    """
+    if _is_hf_space():
         persistent = Path("/data/aura")
         persistent.mkdir(parents=True, exist_ok=True)
         return persistent
@@ -49,16 +80,43 @@ class AuthManager:
         self.data_path = _resolve_db_root(Path(data_path))
         self.data_path.mkdir(parents=True, exist_ok=True)
         self.users_db = self.data_path / "users.db"
-        # Secret priority: explicit arg → AURA_JWT_SECRET env → JWT_SECRET env
-        # → random (tokens invalidated on restart — only for local dev).
+        # Secret priority (MUST be stable across restarts on HF):
+        #   1. Explicit arg passed by the caller (highest priority)
+        #   2. AURA_JWT_SECRET env var  ← set this as a HF Space Secret
+        #   3. JWT_SECRET env var       ← legacy fallback
+        #   4. Persisted secret file in /data/aura/jwt_secret.txt
+        #      (written on first boot, survives restarts even without env var)
+        #   5. Random token (dev-only — tokens invalidated on every restart)
         resolved_secret = (
             secret
             or os.getenv("AURA_JWT_SECRET")
             or os.getenv("JWT_SECRET")
-            or secrets.token_urlsafe(32)
+            or self._load_or_create_secret_file()
         )
         self.secret = resolved_secret.encode("utf-8")
         self._init_db()
+
+    def _load_or_create_secret_file(self) -> str:
+        """Load the persisted JWT secret or create one on first run.
+
+        The file lives in self.data_path (which is /data/aura on HF), so it
+        survives container restarts.  This means users never get logged out
+        just because a new container started.
+        """
+        secret_file = self.data_path / "jwt_secret.txt"
+        if secret_file.exists():
+            value = secret_file.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+        # First boot — generate and persist
+        new_secret = secrets.token_urlsafe(48)
+        try:
+            secret_file.write_text(new_secret, encoding="utf-8")
+            # Restrict permissions: owner read-only
+            secret_file.chmod(0o600)
+        except OSError:
+            pass  # Can't persist — dev fallback is fine
+        return new_secret
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.users_db)
@@ -143,8 +201,6 @@ class AuthManager:
                 conn.commit()
         except sqlite3.IntegrityError as exc:
             raise AuthError(f"username '{username}' is already taken") from exc
-        # Always return 'token' (same key as login) so the frontend
-        # can store it identically regardless of which endpoint was called.
         return {"user_id": user_id, "token": self._issue_token(user_id)}
 
     def login(self, username: str, password: str) -> dict[str, str]:
@@ -153,7 +209,7 @@ class AuthManager:
                 "SELECT user_id, password_hash FROM users WHERE username=?", (username,)
             ).fetchone()
         if row is None:
-            raise AuthError("user not found — please register first")
+            raise AuthError("user not found \u2014 please register first")
         user_id, password_hash = row
         if not self._verify_password(password, password_hash):
             raise AuthError("invalid credentials")
@@ -194,7 +250,6 @@ def _default_manager() -> AuthManager:
     global _DEFAULT_AUTH_MANAGER
     if _DEFAULT_AUTH_MANAGER is None:
         config = load_config()
-        # AuthSettings uses .secret (not .secret_key) — read it correctly.
         secret = getattr(getattr(config, "auth", None), "secret", None) or None
         _DEFAULT_AUTH_MANAGER = AuthManager(config.paths.data_dir, secret=secret)
     return _DEFAULT_AUTH_MANAGER
