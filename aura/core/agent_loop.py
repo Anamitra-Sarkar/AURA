@@ -43,13 +43,14 @@ class _ModelTurn:
 class ReActAgentLoop:
     """Reason, act, observe, and repeat with tool usage."""
 
-    def __init__(self, router: OllamaRouter, registry: ToolRegistry, event_bus: EventBus | None = None, max_steps: int = 4, confirm_tier3: Callable[[str, dict[str, Any]], bool] | None = None) -> None:
+    def __init__(self, router: OllamaRouter, registry: ToolRegistry, event_bus: EventBus | None = None, max_steps: int = 4, confirm_tier3: Callable[[str, dict[str, Any]], bool] | None = None, orchestrator: Any | None = None) -> None:
         self.router = router
         self.registry = registry
         self.event_bus = event_bus
         self.max_steps = max_steps
         self.confirm_tier3 = confirm_tier3 or (lambda _tool, _args: False)
         self._config = load_config()
+        self.orchestrator = orchestrator
 
     async def run(self, user_message: str, importance: int | None = None) -> AgentLoopResult:
         """Run the loop until a final answer is produced."""
@@ -103,6 +104,14 @@ class ReActAgentLoop:
     async def handle_message(self, user_message: str, importance: int | None = None) -> dict[str, Any]:
         """Compatibility wrapper returning a UI-friendly result."""
 
+        if self.orchestrator is not None:
+            result = await self.orchestrator.handle(user_message, "local", {}, importance or 2)
+            return {
+                "response": result.response,
+                "used_ensemble": result.ensemble_used,
+                "tools_called": result.tools_called,
+                "reasoning_used": result.reasoning_used,
+            }
         result = await self.run(user_message, importance=importance)
         return {
             "response": result.answer or result.error or "",

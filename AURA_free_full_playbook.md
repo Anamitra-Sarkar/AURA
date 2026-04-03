@@ -307,6 +307,7 @@ Tools:
 - **Phase 8:** Fixed workflow serialization and pause/resume races so paused workflows persist correctly without deadlocking.
 - **Phase 9:** Added deterministic Phantom test coverage for watch changes, briefing generation, recovery, and loop execution.
 - **Phase 13-15 integration:** Hardened `daemon.run_forever()` to tolerate bootstrap test doubles that omit `config` and `ui_task`, which kept the shutdown path reliable during the final regression pass.
+- **Phase 16-18 integration:** Added the multi-provider router, multi-agent registry/dispatcher/orchestrator, JWT auth, client scaffolding, deployment files, and a clean `daemon --once` fallback when provider credentials are absent.
 
 ## Phase 4 — MNEME (Memory Agent)
 
@@ -828,4 +829,43 @@ Make AURA safe, private, and easy to install and run locally.
 4. Never silently change the **requirements**; only mark actual progress.
 5. Humans can review the git diff of this file to see exactly what the AI has done.
 
-This playbook is the single source of truth for AURA's implementation state. EOF
+This playbook is the single source of truth for AURA's implementation state.
+
+---
+
+## Phase 16 — THE ROUTER
+
+**Status:** DONE — multi-provider router, quota tracking, provider clients, failover, and SmartRouter implemented.
+
+### Tasks Checklist
+
+- [x] Add `core/router/models.py`, `registry.py`, `quota_tracker.py`, `task_classifier.py`, `failover.py`, and `smart_router.py`.
+- [x] Add provider clients for Groq, OpenRouter, Cerebras, Gemini, Mistral, Cloudflare, and XAI.
+- [x] Integrate the router into the daemon/UI runtime path.
+- [x] Add router tests covering classification, failover, quota tracking, and ensemble execution.
+
+---
+
+## Phase 17 — MULTI-AGENT CORE
+
+**Status:** DONE — A2A registry, dispatcher, MCP endpoints, and orchestrator implemented.
+
+### Tasks Checklist
+
+- [x] Add `core/multiagent/models.py`, `registry.py`, `dispatcher.py`, `mcp_server.py`, and `orchestrator.py`.
+- [x] Add `/a2a/agents` and `/mcp/tools` routes to the FastAPI app.
+- [x] Wire `agent_loop` and `api/message` through the orchestrator when available.
+- [x] Add multi-agent tests covering registry, dispatch, orchestrator, and UI endpoints.
+
+---
+
+## Phase 18 — CLIENT, AUTH, AND DEPLOYMENT
+
+**Status:** DONE — lightweight client package, JWT auth, Docker, and frontend scaffolding added.
+
+### Tasks Checklist
+
+- [x] Add `core/auth/` with `AuthManager`, JWT verification, and per-user data paths.
+- [x] Add `client/aura_client/` package with connection, executor, security, and CLI entry point.
+- [x] Add `Dockerfile`, `.env.example`, `spaces_README.md`, and `vercel.json`.
+- [x] Add a minimal frontend build that succeeds via `npm run build`.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 from dataclasses import dataclass, field, is_dataclass, asdict
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -11,11 +12,12 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 import aura
+from aura.core.auth import AuthError, AuthManager
 from aura.agents.aegis import tools as aegis_tools
 from aura.agents.director import tools as director_tools
 from aura.agents.lyra import tools as lyra_tools
@@ -29,6 +31,10 @@ from aura.core.event_bus import EventBus
 from aura.core.llm_router import OllamaRouter
 from aura.core.logging import get_logger
 from aura.core.tools import get_tool_registry
+from aura.core.multiagent.dispatcher import A2ADispatcher
+from aura.core.multiagent.mcp_server import call_mcp_tool, list_mcp_tools
+from aura.core.multiagent.orchestrator import NexusOrchestrator
+from aura.core.multiagent.registry import AgentRegistry
 from aura.memory import delete_memory, list_memories, recall_memory
 
 LOGGER = get_logger(__name__, component="nexus")
@@ -72,6 +78,8 @@ class NexusRuntime:
     config: AppConfig
     event_bus: EventBus
     agent_loop: ReActAgentLoop
+    orchestrator: NexusOrchestrator | None = None
+    auth_manager: AuthManager | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     event_token: str | None = None
 
@@ -88,10 +96,11 @@ def _default_runtime() -> NexusRuntime:
 
 _RUNTIME: NexusRuntime = _default_runtime()
 _CONNECTED_CLIENTS: set[WebSocket] = set()
+_CLIENT_CONNECTIONS: dict[str, WebSocket] = {}
 _EVENT_BRIDGE_READY = False
 
 
-def configure_runtime(config: AppConfig | None = None, event_bus: EventBus | None = None, agent_loop: ReActAgentLoop | None = None) -> None:
+def configure_runtime(config: AppConfig | None = None, event_bus: EventBus | None = None, agent_loop: ReActAgentLoop | None = None, orchestrator: NexusOrchestrator | None = None, auth_manager: AuthManager | None = None) -> None:
     """Update the runtime dependencies used by the UI."""
 
     global _RUNTIME, _EVENT_BRIDGE_READY
@@ -100,6 +109,8 @@ def configure_runtime(config: AppConfig | None = None, event_bus: EventBus | Non
         config=config or current.config,
         event_bus=event_bus or current.event_bus,
         agent_loop=agent_loop or current.agent_loop,
+        orchestrator=orchestrator or current.orchestrator,
+        auth_manager=auth_manager or current.auth_manager,
         started_at=current.started_at,
     )
     _EVENT_BRIDGE_READY = False
@@ -110,6 +121,27 @@ def get_runtime() -> NexusRuntime:
     """Return the active UI runtime."""
 
     return getattr(app.state, "runtime", _RUNTIME)
+
+
+def _auth_manager() -> AuthManager | None:
+    runtime = get_runtime()
+    return runtime.auth_manager
+
+
+def _require_token(request: Request) -> str | None:
+    manager = _auth_manager()
+    if manager is None:
+        return None
+    header = request.headers.get("authorization", "")
+    if not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    token = header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    try:
+        return manager.verify_token(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 def _serialize(value: Any) -> Any:
@@ -257,6 +289,14 @@ async def lifespan(application: FastAPI):
 app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan)
 
 
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    runtime = get_runtime()
+    if request.url.path.startswith("/api/") and runtime.auth_manager is not None:
+        _require_token(request)
+    return await call_next(request)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     """Serve the single-file frontend."""
@@ -272,15 +312,100 @@ async def health() -> dict[str, Any]:
     return {"status": "ok", "version": aura.__version__, "uptime_seconds": uptime_seconds}
 
 
+@app.post("/auth/register")
+async def auth_register(payload: dict[str, str]) -> dict[str, Any]:
+    manager = _auth_manager()
+    if manager is None:
+        raise HTTPException(status_code=400, detail="authentication disabled")
+    if not payload.get("username") or not payload.get("password"):
+        raise HTTPException(status_code=400, detail="username and password required")
+    return manager.register(payload["username"], payload["password"])
+
+
+@app.post("/auth/login")
+async def auth_login(payload: dict[str, str]) -> dict[str, Any]:
+    manager = _auth_manager()
+    if manager is None:
+        raise HTTPException(status_code=400, detail="authentication disabled")
+    if not payload.get("username") or not payload.get("password"):
+        raise HTTPException(status_code=400, detail="username and password required")
+    return manager.login(payload["username"], payload["password"])
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request) -> dict[str, Any]:
+    manager = _auth_manager()
+    if manager is None:
+        raise HTTPException(status_code=400, detail="authentication disabled")
+    user_id = _require_token(request)
+    return {"user_id": user_id}
+
+
 @app.get("/api/state")
 async def api_state() -> dict[str, Any]:
     return build_state_snapshot()
 
 
 @app.post("/api/message")
-async def api_message(payload: MessageRequest) -> dict[str, Any]:
-    result = await get_runtime().agent_loop.handle_message(payload.text, importance=payload.importance)
+async def api_message(payload: MessageRequest, request: Request) -> dict[str, Any]:
+    runtime = get_runtime()
+    user_id = _require_token(request) or "local"
+    if runtime.orchestrator is not None:
+        result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+        return {
+            "response": result.response,
+            "used_ensemble": result.ensemble_used,
+            "tools_called": result.tools_called,
+            "reasoning_used": result.reasoning_used,
+        }
+    result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
     return result
+
+
+@app.get("/a2a/agents")
+async def a2a_agents() -> list[dict[str, Any]]:
+    registry = AgentRegistry()
+    return [_serialize(card) for card in registry.list_all()]
+
+
+@app.get("/a2a/agents/{agent_id}")
+async def a2a_agent(agent_id: str) -> dict[str, Any]:
+    registry = AgentRegistry()
+    try:
+        return _serialize(registry.get(agent_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="agent not found") from exc
+
+
+@app.post("/a2a/agents/{agent_id}/tasks")
+async def a2a_agent_task(agent_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    runtime = get_runtime()
+    _require_token(request)
+    dispatcher = runtime.orchestrator.dispatcher if runtime.orchestrator is not None else A2ADispatcher(AgentRegistry())
+    task = {
+        "task_id": payload.get("task_id") or secrets.token_hex(16),
+        "from_agent": payload.get("from_agent", "director"),
+        "to_agent": agent_id,
+        "instruction": payload.get("instruction", ""),
+        "context": payload.get("context", {}),
+        "priority": int(payload.get("priority", 2)),
+        "callback_url": payload.get("callback_url"),
+    }
+    from aura.core.multiagent.models import A2ATask
+
+    result = await dispatcher.dispatch(A2ATask(**task))
+    return _serialize(result)
+
+
+@app.get("/mcp/tools")
+async def mcp_tools() -> list[dict[str, Any]]:
+    return list_mcp_tools()
+
+
+@app.post("/mcp/tools/{agent_id}/{tool_name}")
+async def mcp_call(agent_id: str, tool_name: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    _require_token(request)
+    return await call_mcp_tool(agent_id, tool_name, payload.get("arguments", {}))
 
 
 @app.get("/api/workflows")
@@ -430,6 +555,34 @@ async def api_mosaic_diff(payload: dict[str, Any] = Body(...)) -> Any:
 @app.get("/api/mosaic/{mosaic_id}")
 async def api_mosaic_cite(mosaic_id: str) -> dict[str, Any]:
     return {"citations": mosaic_tools.cite_sources(mosaic_id)}
+
+
+@app.websocket("/ws/client/{user_id}")
+async def websocket_client(websocket: WebSocket, user_id: str) -> None:
+    token = websocket.query_params.get("token") or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    manager = _auth_manager()
+    if manager is not None:
+        if not token:
+            await websocket.close(code=4401)
+            return
+        try:
+            verified_user_id = manager.verify_token(token)
+        except AuthError:
+            await websocket.close(code=4401)
+            return
+        if verified_user_id != user_id:
+            await websocket.close(code=4403)
+            return
+    await websocket.accept()
+    _CLIENT_CONNECTIONS[user_id] = websocket
+    await websocket.send_json({"type": "hello", "platform": "linux", "capabilities": ["atlas", "aegis", "hermes", "lyra"], "aura_version": aura.__version__})
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _CLIENT_CONNECTIONS.pop(user_id, None)
 
 
 @app.websocket("/ws/events")

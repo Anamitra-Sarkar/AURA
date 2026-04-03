@@ -84,6 +84,38 @@ class UISettings:
 
 
 @dataclass(slots=True)
+class AuthSettings:
+    """Authentication configuration."""
+
+    enabled: bool
+    secret: str
+
+
+@dataclass(slots=True)
+class RouterProviderSettings:
+    """Per-provider router configuration."""
+
+    enabled: bool
+    api_key_env: str
+    site_url: str | None = None
+    site_name: str | None = None
+    account_id_env: str | None = None
+
+
+@dataclass(slots=True)
+class RouterSettings:
+    """Multi-provider router configuration."""
+
+    default_importance: int
+    ensemble_providers: int
+    max_tokens_default: int
+    temperature_default: float
+    fallback_to_openrouter_auto: bool
+    quota_db: str
+    providers: dict[str, RouterProviderSettings]
+
+
+@dataclass(slots=True)
 class StreamSourceConfig:
     """Configured STREAM source entry."""
 
@@ -118,6 +150,8 @@ class AppConfig:
     lyra: LyraSettings | None = None
     ui: UISettings | None = None
     stream: StreamSettings | None = None
+    auth: AuthSettings | None = None
+    router: RouterSettings | None = None
 
 
 def _load_config_data(path: Path) -> dict[str, Any]:
@@ -162,6 +196,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     lyra = raw.get("lyra", {})
     ui = raw.get("ui", {})
     stream = raw.get("stream", {})
+    auth = raw.get("auth")
+    router = raw.get("router")
     source_base = config_path.parent.parent.resolve()
     primary = _model_from_dict(models["primary"])
     fallbacks = [_model_from_dict(entry) for entry in models.get("fallbacks", [])]
@@ -226,4 +262,27 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 if isinstance(item, dict)
             ],
         ) if stream is not None else None,
+        auth=AuthSettings(
+            enabled=bool(auth.get("enabled", False)),
+            secret=str(auth.get("secret", "")),
+        ) if isinstance(auth, dict) and auth else None,
+        router=RouterSettings(
+            default_importance=int(router.get("default_importance", 2)),
+            ensemble_providers=int(router.get("ensemble_providers", 4)),
+            max_tokens_default=int(router.get("max_tokens_default", 4096)),
+            temperature_default=float(router.get("temperature_default", 0.7)),
+            fallback_to_openrouter_auto=bool(router.get("fallback_to_openrouter_auto", True)),
+            quota_db=str(router.get("quota_db", str(source_base / "var" / "data" / "quota.db"))),
+            providers={
+                name: RouterProviderSettings(
+                    enabled=bool(settings.get("enabled", True)),
+                    api_key_env=str(settings.get("api_key_env", "")),
+                    site_url=settings.get("site_url"),
+                    site_name=settings.get("site_name"),
+                    account_id_env=settings.get("account_id_env"),
+                )
+                for name, settings in router.get("providers", {}).items()
+                if isinstance(settings, dict)
+            },
+        ) if isinstance(router, dict) and router else None,
     )

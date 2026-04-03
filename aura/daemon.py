@@ -24,6 +24,11 @@ try:  # pragma: no cover - import shim for script execution
     from .core.logging import configure_logging, get_logger
     from .core.tools import ToolRegistry, ToolSpec, get_tool_registry
     from .core.tray import TrayController
+    from .core.router.quota_tracker import QuotaTracker
+    from .core.router.smart_router import SmartRouter
+    from .core.multiagent.orchestrator import NexusOrchestrator
+    from .core.multiagent.dispatcher import A2ADispatcher
+    from .core.multiagent.registry import AgentRegistry
     from .agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
     from .agents.logos.tools import register_logos_tools, set_router as set_logos_router
     from .agents.echo.tools import register_echo_tools, set_config as set_echo_config
@@ -45,6 +50,11 @@ except ImportError:  # pragma: no cover - direct script execution
     from aura.core.logging import configure_logging, get_logger
     from aura.core.tools import ToolRegistry, ToolSpec, get_tool_registry
     from aura.core.tray import TrayController
+    from aura.core.router.quota_tracker import QuotaTracker
+    from aura.core.router.smart_router import SmartRouter
+    from aura.core.multiagent.orchestrator import NexusOrchestrator
+    from aura.core.multiagent.dispatcher import A2ADispatcher
+    from aura.core.multiagent.registry import AgentRegistry
     from aura.agents.atlas.tools import register_atlas_tools, set_config as set_atlas_config, set_event_bus as set_atlas_event_bus
     from aura.agents.logos.tools import register_logos_tools, set_router as set_logos_router
     from aura.agents.echo.tools import register_echo_tools, set_config as set_echo_config
@@ -65,7 +75,7 @@ class DaemonState:
     config: AppConfig
     event_bus: EventBus
     tools: ToolRegistry
-    router: OllamaRouter
+    router: Any
     agent_loop: ReActAgentLoop
     ipc_server: UnixSocketServer | None = None
     hotkey: GlobalHotkeyManager | None = None
@@ -111,8 +121,16 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
         )
     except ValueError:
         pass
-    router = OllamaRouter(model=config.primary_model.name, host=config.primary_model.host)
-    agent_loop = ReActAgentLoop(router=router, registry=registry, event_bus=event_bus)
+    orchestrator = None
+    router: Any
+    if getattr(config, "router", None) is not None:
+        quota_db = Path(str(config.router.quota_db).replace("{data_path}", str(config.paths.data_dir)))
+        smart_router = SmartRouter(QuotaTracker(quota_db), event_bus=event_bus)
+        router = smart_router
+        orchestrator = NexusOrchestrator(smart_router, A2ADispatcher(AgentRegistry()), AgentRegistry())
+    else:
+        router = OllamaRouter(model=config.primary_model.name, host=config.primary_model.host)
+    agent_loop = ReActAgentLoop(router=router, registry=registry, event_bus=event_bus, orchestrator=orchestrator)
     set_atlas_config(config)
     set_atlas_event_bus(event_bus)
     set_logos_router(router)
@@ -142,7 +160,7 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     register_stream_tools()
     register_mosaic_tools()
     resume_interrupted_workflows()
-    set_ui_runtime(config, event_bus, agent_loop)
+    set_ui_runtime(config, event_bus, agent_loop, orchestrator=orchestrator)
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
     hotkey = GlobalHotkeyManager() if config.features.hotkey else None
     tray = TrayController() if config.features.tray else None

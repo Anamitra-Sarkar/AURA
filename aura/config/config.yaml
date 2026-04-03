@@ -39,6 +39,27 @@
     "ipc": true,
     "api": true
   },
+  "auth": {
+    "enabled": false,
+    "secret": "change-me"
+  },
+  "router": {
+    "default_importance": 2,
+    "ensemble_providers": 4,
+    "max_tokens_default": 4096,
+    "temperature_default": 0.7,
+    "fallback_to_openrouter_auto": true,
+    "quota_db": "./var/data/quota.db",
+    "providers": {
+      "groq": {"enabled": true, "api_key_env": "GROQ_API_KEY"},
+      "openrouter": {"enabled": true, "api_key_env": "OPENROUTER_API_KEY", "site_url": "https://aura-agent.hf.space", "site_name": "AURA Agent"},
+      "cerebras": {"enabled": true, "api_key_env": "CEREBRAS_API_KEY"},
+      "gemini": {"enabled": true, "api_key_env": "GEMINI_API_KEY"},
+      "mistral": {"enabled": true, "api_key_env": "MISTRAL_API_KEY"},
+      "cloudflare": {"enabled": true, "api_key_env": "CF_API_TOKEN", "account_id_env": "CF_ACCOUNT_ID"},
+      "xai": {"enabled": true, "api_key_env": "XAI_API_KEY"}
+    }
+  },
   "ensemble": {
     "enabled": true,
     "default_importance_threshold": 2,
@@ -68,7 +89,7 @@
   "ui": {
     "enabled": true,
     "host": "127.0.0.1",
-    "port": 7437,
+    "port": 7860,
     "open_browser_on_start": false
   },
   "stream": {
