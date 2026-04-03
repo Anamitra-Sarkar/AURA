@@ -6,12 +6,12 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 from .event_bus import EventBus
 from .config import load_config
 from .llm_router import OllamaRouter
-from .tools import ToolCallResult, ToolRegistry
+from .tools import ToolCallResult, ToolRegistry, get_tool_registry
 
 try:
     from aura.memory import inject_context, auto_extract_memories
@@ -44,7 +44,7 @@ class _ModelTurn:
 class ReActAgentLoop:
     """Reason, act, observe, and repeat with tool usage."""
 
-    def __init__(self, router: OllamaRouter, registry: ToolRegistry, event_bus: EventBus | None = None, max_steps: int = 4, confirm_tier3: Callable[[str, dict[str, Any]], bool] | None = None, orchestrator: Any | None = None) -> None:
+    def __init__(self, router: OllamaRouter, registry: ToolRegistry | None = None, event_bus: EventBus | None = None, max_steps: int = 10, confirm_tier3: Callable[[str, dict[str, Any]], bool] | None = None, orchestrator: Any | None = None) -> None:
         self.router = router
         self.registry = registry
         self.event_bus = event_bus
@@ -57,13 +57,15 @@ class ReActAgentLoop:
         """Run the loop until a final answer is produced."""
 
         memory_context = ""
-        if inject_context is not None:
+        if callable(inject_context):
             try:
-                memory_context = inject_context(user_message)
+                memory_context = await asyncio.to_thread(inject_context, user_message)
             except Exception:
                 memory_context = ""
+
+        registry = self.registry or get_tool_registry()
         messages = [
-            {"role": "system", "content": self._system_prompt(memory_context)},
+            {"role": "system", "content": self._system_prompt(registry.list_tools(), memory_context)},
             {"role": "user", "content": user_message},
         ]
         steps: list[dict[str, Any]] = []
@@ -71,33 +73,57 @@ class ReActAgentLoop:
             model_result = await self._model_call(messages, user_message, importance)
             if not model_result.ok or model_result.content is None:
                 return AgentLoopResult(ok=False, error=model_result.error or "model-error", steps=steps, used_ensemble=model_result.used_ensemble)
-            parsed = self._parse_response(model_result.content)
-            if parsed.get("type") == "final":
-                answer = str(parsed.get("response", ""))
+            parsed = self._parse_turn(model_result.content)
+            if parsed["final_answer"] is not None:
+                answer = parsed["final_answer"]
                 await self._maybe_voice_response(answer)
-                return AgentLoopResult(ok=True, answer=answer, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
-            if parsed.get("type") != "tool":
-                answer = model_result.content
+                return AgentLoopResult(
+                    ok=True,
+                    answer=answer,
+                    steps=steps,
+                    used_ensemble=model_result.used_ensemble,
+                    tools_called=[step["tool"] for step in steps],
+                    reasoning_used=self._reasoning_used(steps),
+                )
+            action = parsed["action"]
+            if action is None:
+                answer = self._extract_final_answer(model_result.content) or model_result.content
                 await self._maybe_voice_response(answer)
-                return AgentLoopResult(ok=True, answer=answer, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
-            tool_name = str(parsed.get("tool", ""))
-            arguments = parsed.get("arguments") or {}
-            tier = 0
+                return AgentLoopResult(
+                    ok=True,
+                    answer=answer,
+                    steps=steps,
+                    used_ensemble=model_result.used_ensemble,
+                    tools_called=[step["tool"] for step in steps],
+                    reasoning_used=self._reasoning_used(steps),
+                )
+            tool_name = str(action.get("tool") or action.get("name") or "")
+            arguments = action.get("arguments") if isinstance(action.get("arguments"), dict) else {}
+            if not tool_name:
+                return AgentLoopResult(ok=False, error="missing-tool-name", steps=steps, used_ensemble=model_result.used_ensemble)
             try:
-                tool_spec = self.registry.get(tool_name)
-                tier = tool_spec.tier
+                tool_spec = registry.get(tool_name)
             except KeyError:
                 return AgentLoopResult(ok=False, error=f"unknown-tool:{tool_name}", steps=steps)
-            if tier >= 3 and not self.confirm_tier3(tool_name, arguments):
+            if tool_spec.tier >= 3 and not self.confirm_tier3(tool_name, arguments):
                 return AgentLoopResult(ok=False, error="tier-3-confirmation-required", steps=steps)
-            tool_result = await self.registry.execute(tool_name, arguments, confirm=True)
-            steps.append({"tool": tool_name, "arguments": arguments, "result": self._tool_result_dict(tool_result)})
+            tool_result = await registry.execute(tool_name, arguments, confirm=True)
+            tool_result_dict = self._tool_result_dict(tool_result)
+            steps.append({"tool": tool_name, "arguments": arguments, "result": tool_result_dict})
             if self.event_bus is not None:
-                await self.event_bus.publish("agent.tool", {"tool": tool_name, "result": self._tool_result_dict(tool_result)})
+                await self.event_bus.publish("agent.tool", {"tool": tool_name, "result": tool_result_dict})
             if not tool_result.ok:
-                return AgentLoopResult(ok=False, error=tool_result.error, steps=steps, used_ensemble=model_result.used_ensemble, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
+                return AgentLoopResult(
+                    ok=False,
+                    error=tool_result.error,
+                    steps=steps,
+                    used_ensemble=model_result.used_ensemble,
+                    tools_called=[step["tool"] for step in steps],
+                    reasoning_used=self._reasoning_used(steps),
+                )
+            observation = self._format_observation(tool_result)
             messages.append({"role": "assistant", "content": model_result.content})
-            messages.append({"role": "tool", "content": json.dumps(self._tool_result_dict(tool_result), ensure_ascii=True)})
+            messages.append({"role": "user", "content": f"Observation: {observation}"})
             if auto_extract_memories is not None:
                 asyncio.create_task(self._extract_memories(user_message, model_result.content))
         return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
@@ -182,8 +208,8 @@ class ReActAgentLoop:
         except Exception:
             return
 
-    def _system_prompt(self, memory_context: str = "") -> str:
-        tools = [
+    def _system_prompt(self, tools: list[Any], memory_context: str = "") -> str:
+        tool_descriptions = [
             {
                 "name": spec.name,
                 "description": spec.description,
@@ -191,9 +217,19 @@ class ReActAgentLoop:
                 "arguments": spec.arguments_schema,
                 "returns": spec.return_schema,
             }
-            for spec in self.registry.list_tools()
+            for spec in tools
         ]
-        payload = {"instructions": "Respond with JSON: {type: 'tool'|'final', ...}", "tools": tools}
+        payload = {
+            "instructions": [
+                "You are a ReAct agent.",
+                "Think in a brief Thought section.",
+                "Then output exactly one Action JSON object or a Final Answer line.",
+                'Valid Action JSON: {"tool":"tool_name","arguments":{...}}',
+                "If you are done, output Final Answer: <answer>.",
+            ],
+            "tools": tool_descriptions,
+            "max_steps": self.max_steps,
+        }
         if memory_context:
             payload["memory_context"] = memory_context
         return json.dumps(payload, ensure_ascii=True)
@@ -213,14 +249,55 @@ class ReActAgentLoop:
         return any(step.get("tool") in reasoning_tools for step in steps)
 
     @staticmethod
-    def _parse_response(content: str) -> dict[str, Any]:
+    def _parse_turn(content: str) -> dict[str, Any]:
+        final_answer = ReActAgentLoop._extract_final_answer(content)
+        if final_answer is not None:
+            return {"thought": ReActAgentLoop._extract_thought(content), "action": None, "final_answer": final_answer}
+        action = ReActAgentLoop._extract_action(content)
+        if action is not None:
+            return {"thought": ReActAgentLoop._extract_thought(content), "action": action, "final_answer": None}
         try:
             parsed = json.loads(content)
             if isinstance(parsed, dict):
-                return parsed
+                if "final_answer" in parsed:
+                    return {"thought": parsed.get("thought"), "action": None, "final_answer": str(parsed.get("final_answer", ""))}
+                if parsed.get("type") == "final":
+                    return {"thought": parsed.get("thought"), "action": None, "final_answer": str(parsed.get("response", ""))}
+                if "tool" in parsed or "name" in parsed:
+                    return {"thought": parsed.get("thought"), "action": parsed, "final_answer": None}
         except json.JSONDecodeError:
-            return {"type": "final", "response": content}
-        return {"type": "final", "response": content}
+            pass
+        return {"thought": ReActAgentLoop._extract_thought(content), "action": None, "final_answer": None}
+
+    @staticmethod
+    def _extract_thought(content: str) -> str:
+        match = re.search(r"Thought:\s*(.*?)(?:\n(?:Action|Final Answer):|\Z)", content, flags=re.DOTALL | re.IGNORECASE)
+        return match.group(1).strip() if match else ""
+
+    @staticmethod
+    def _extract_final_answer(content: str) -> str | None:
+        match = re.search(r"Final Answer:\s*(.+)", content, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return None
+
+    @staticmethod
+    def _extract_action(content: str) -> dict[str, Any] | None:
+        match = re.search(r"Action:\s*(\{.*\})", content, flags=re.DOTALL | re.IGNORECASE)
+        if not match:
+            return None
+        payload = match.group(1).strip()
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _format_observation(result: ToolCallResult) -> str:
+        if result.ok:
+            return json.dumps({"tool": result.tool, "result": result.result}, ensure_ascii=True)
+        return json.dumps({"tool": result.tool, "error": result.error}, ensure_ascii=True)
 
     @staticmethod
     def _tool_result_dict(result: ToolCallResult) -> dict[str, Any]:

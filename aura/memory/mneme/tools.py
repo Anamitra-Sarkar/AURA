@@ -629,7 +629,14 @@ def get_memory_tools() -> list[ToolSpec]:
         ToolSpec("list_memories", "List memories.", 1, {"type": "object"}, {"type": "array"}, lambda args: list_memories(args.get("category"), args.get("tag_filter"), args.get("limit", 50))),
         ToolSpec("consolidate_memory", "Consolidate duplicate memories.", 1, {"type": "object"}, {"type": "object"}, lambda args: consolidate_memory()),
         ToolSpec("inject_context", "Inject memory context into prompts.", 1, {"type": "object"}, {"type": "string"}, lambda args: inject_context(args["query"], args.get("max_tokens", 500))),
-        ToolSpec("auto_extract_memories", "Extract memories from a response.", 1, {"type": "object"}, {"type": "array"}, lambda args: auto_extract_memories(args["conversation_turn"], args["response"])),
+        ToolSpec(
+            "auto_extract_memories",
+            "Extract memories from a response.",
+            1,
+            {"type": "object"},
+            {"type": "array"},
+            lambda args: asyncio.run(auto_extract_memories(args["conversation_turn"], args["response"])),
+        ),
     ]
 
 
