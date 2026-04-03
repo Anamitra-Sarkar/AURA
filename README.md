@@ -1,10 +1,13 @@
+---
+title: AI Agent
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 AURA doesn't generate your college logo. It finds it in your template, copies it to the right position, and moves on. That's what a human would do. That's what intelligence means.
-
-# AURA
-
-[![Sync to HuggingFace](https://github.com/Anamitra-Sarkar/AURA/actions/workflows/sync-to-hf.yml/badge.svg)](https://github.com/Anamitra-Sarkar/AURA/actions/workflows/sync-to-hf.yml)
-[![HuggingFace Space](https://img.shields.io/badge/🤗%20HuggingFace-AI--agent-blue)](https://huggingface.co/spaces/Arko007/AI-agent)
-[![License](https://img.shields.io/github/license/Anamitra-Sarkar/AURA)](LICENSE)
 
 AURA is a free, local-first personal AI firm. It is not a chatbot. It is a team of specialized agents that use files, browsers, memory, calendars, the system shell, and the UI around them to do real work on your PC.
 
