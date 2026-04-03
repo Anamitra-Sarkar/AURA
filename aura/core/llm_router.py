@@ -1,4 +1,4 @@
-"""Local Ollama routing for AURA."""
+"""LLM routing for AURA — local Ollama + multi-provider SmartRouter adapter."""
 
 from __future__ import annotations
 
@@ -79,3 +79,44 @@ class OllamaRouter:
             if "response" in response:
                 return str(response["response"])
         return str(response)
+
+
+class SmartRouterAdapter:
+    """Wraps SmartRouter to expose the same .chat() interface as OllamaRouter.
+
+    agent_loop.py calls ``router.chat(messages)`` and expects an LLMResult.
+    SmartRouter.chat() returns a ProviderCall dataclass.  This adapter bridges
+    the two so the loop works with all 7 free-tier cloud providers without any
+    changes to agent_loop.py.
+    """
+
+    def __init__(self, smart_router: Any) -> None:
+        self._router = smart_router
+
+    async def chat(
+        self,
+        messages: Sequence[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+        importance: int = 2,
+    ) -> LLMResult:
+        """Dispatch to SmartRouter and translate the result to LLMResult."""
+        try:
+            result = await self._router.chat(list(messages))
+            # ProviderCall has .response and .success attributes
+            ok = bool(getattr(result, "success", True))
+            content = str(getattr(result, "response", "") or "")
+            error = str(getattr(result, "error", "") or "") or None
+            model = f"{getattr(result, 'provider', 'unknown')}:{getattr(result, 'model', 'unknown')}"
+            if not ok and not content:
+                return LLMResult(ok=False, model=model, error=error or "provider-error")
+            return LLMResult(ok=True, model=model, content=content, raw=result, error=error if error else None)
+        except Exception as exc:
+            return LLMResult(ok=False, model="smart_router", error=str(exc))
+
+    async def generate(self, prompt: str, system: str | None = None) -> LLMResult:
+        """Single-turn convenience wrapper."""
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return await self.chat(messages)

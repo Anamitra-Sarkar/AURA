@@ -31,13 +31,15 @@ from aura.agents.stream import tools as stream_tools
 from aura.core.agent_loop import ReActAgentLoop
 from aura.core.config import AppConfig, load_config
 from aura.core.event_bus import EventBus
-from aura.core.llm_router import OllamaRouter
+from aura.core.llm_router import SmartRouterAdapter
 from aura.core.logging import get_logger
 from aura.core.tools import get_tool_registry
 from aura.core.multiagent.dispatcher import A2ADispatcher
 from aura.core.multiagent.mcp_server import call_mcp_tool, list_mcp_tools
 from aura.core.multiagent.orchestrator import NexusOrchestrator
 from aura.core.multiagent.registry import AgentRegistry
+from aura.core.router.smart_router import SmartRouter
+from aura.core.router.quota_tracker import QuotaTracker
 from aura.memory import delete_memory, list_memories, recall_memory
 
 LOGGER = get_logger(__name__, component="nexus")
@@ -123,10 +125,18 @@ class NexusRuntime:
     event_token: str | None = None
 
 
+def _build_smart_router(config: AppConfig, event_bus: EventBus) -> SmartRouterAdapter:
+    """Instantiate SmartRouter backed by SQLite quota tracking and wrap it
+    in SmartRouterAdapter so the ReActAgentLoop can use it unchanged."""
+    quota_db = config.paths.data_dir / "quota.db"
+    tracker = QuotaTracker(quota_db)
+    smart = SmartRouter(quota_tracker=tracker, event_bus=event_bus)
+    return SmartRouterAdapter(smart)
+
+
 def _default_runtime() -> NexusRuntime:
     config = load_config()
     event_bus = EventBus()
-    # Read secret from config.auth.secret (correct attr name) then env fallback.
     auth_secret = (
         getattr(getattr(config, "auth", None), "secret", None)
         or os.getenv("AURA_JWT_SECRET")
@@ -134,14 +144,12 @@ def _default_runtime() -> NexusRuntime:
         or None
     )
     auth_manager = AuthManager(config.paths.data_dir, secret=auth_secret)
+    router_adapter = _build_smart_router(config, event_bus)
     return NexusRuntime(
         config=config,
         event_bus=event_bus,
         agent_loop=ReActAgentLoop(
-            router=OllamaRouter(
-                model=config.primary_model.name,
-                host=config.primary_model.host,
-            ),
+            router=router_adapter,
             registry=get_tool_registry(),
             event_bus=event_bus,
         ),
@@ -495,13 +503,35 @@ async def api_health() -> dict[str, Any]:
         list_memories(limit=1)
     except Exception:
         memory_ok = False
-    model_name = str(getattr(getattr(runtime.config, "primary_model", None), "name", ""))
+
+    # Report real provider availability from the SmartRouter's quota tracker
+    provider_status: dict[str, bool] = {}
+    try:
+        adapter = runtime.agent_loop.router
+        smart: SmartRouter | None = getattr(adapter, "_router", None)
+        if smart is not None:
+            tracker: QuotaTracker = smart.quota_tracker
+            probe_models = {
+                "groq": "llama-3.1-8b-instant",
+                "gemini": "gemini-2.0-flash",
+                "mistral": "mistral-small-latest",
+                "cerebras": "llama-4-scout",
+                "openrouter": "openrouter/auto",
+                "cloudflare": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                "xai": "grok-3-mini",
+            }
+            for provider, model in probe_models.items():
+                provider_status[provider] = tracker.is_available(provider, model)
+    except Exception:
+        pass
+
     local_pc_ok = not aegis_tools.HF_SPACE
+    router_ok = any(provider_status.values()) if provider_status else True
     return {
-        "router": {"ok": bool(model_name), "model": model_name},
+        "router": {"ok": router_ok, "providers": provider_status},
         "memory": {"ok": memory_ok},
         "local_pc": {"ok": local_pc_ok},
-        "status": "ok" if model_name and memory_ok else "degraded",
+        "status": "ok" if router_ok and memory_ok else "degraded",
     }
 
 
