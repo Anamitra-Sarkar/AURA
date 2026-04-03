@@ -5,12 +5,22 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import sqlite3
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+# Silence the chromadb posthog telemetry client BEFORE importing chromadb.
+# The newer chromadb ships a posthog client whose capture() signature changed
+# from capture(event, properties) to capture(distinct_id, event, properties).
+# Chromadb internally calls it the old way, producing noisy log spam:
+#   "capture() takes 1 positional argument but 3 were given"
+# Setting this env var before the import makes chromadb skip telemetry entirely.
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY", "False")
 
 import chromadb
 from chromadb.config import Settings
@@ -30,6 +40,33 @@ _CHROMA_CLIENT: chromadb.PersistentClient | None = None
 _CHROMA_COLLECTION: Any | None = None
 _READY = False
 
+# ---------------------------------------------------------------------------
+# Embedding model selection
+# ---------------------------------------------------------------------------
+# Default: all-MiniLM-L6-v2  (22 MB, 384-dim, very fast, good quality)
+# Lighter: all-MiniLM-L12-v2 (33 MB, slightly better)
+# Fastest: paraphrase-MiniLM-L3-v2  (7 MB, 384-dim, great for HF free tier)
+#
+# Override in config.yaml under memory.embedding_model, or set the
+# AURA_EMBED_MODEL env var.  The env var wins over config.
+# ---------------------------------------------------------------------------
+_DEFAULT_EMBED_MODEL = "all-MiniLM-L6-v2"
+
+
+def _embedding_model_name() -> str:
+    """Return the sentence-transformers model name to use for embeddings."""
+    # 1. Env var override (set as HF Space Secret for easy switching)
+    env_val = os.getenv("AURA_EMBED_MODEL")
+    if env_val:
+        return env_val.strip()
+    # 2. Config field: config.memory.embedding_model (optional)
+    memory_cfg = getattr(CONFIG, "memory", None)
+    if memory_cfg is not None:
+        model_name = getattr(memory_cfg, "embedding_model", None)
+        if model_name:
+            return str(model_name).strip()
+    return _DEFAULT_EMBED_MODEL
+
 
 class MnemeError(Exception):
     """Raised when memory operations fail."""
@@ -38,11 +75,12 @@ class MnemeError(Exception):
 def set_config(config: AppConfig) -> None:
     """Override the runtime configuration used by MNEME."""
 
-    global CONFIG, _READY, _CHROMA_CLIENT, _CHROMA_COLLECTION
+    global CONFIG, _READY, _CHROMA_CLIENT, _CHROMA_COLLECTION, _EMBED_MODEL
     CONFIG = config
     _READY = False
     _CHROMA_CLIENT = None
     _CHROMA_COLLECTION = None
+    _EMBED_MODEL = None  # force reload with new config's model name
 
 
 def set_router(router: Any | None) -> None:
@@ -103,13 +141,23 @@ def _chroma_dir() -> Path:
 
 
 def _get_embed_model() -> Any:
-    """Return the local sentence-transformers embedder."""
+    """Return the local sentence-transformers embedder (lazy, singleton)."""
 
     global _EMBED_MODEL
     if _EMBED_MODEL is None:
         from sentence_transformers import SentenceTransformer  # type: ignore
 
-        _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+        model_name = _embedding_model_name()
+        LOGGER.info("Loading embedding model: %s", model_name)
+
+        # Pass HF_TOKEN if set so HuggingFace doesn't nag about
+        # unauthenticated downloads and respects higher rate limits.
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+        kwargs: dict[str, Any] = {}
+        if hf_token:
+            kwargs["token"] = hf_token
+
+        _EMBED_MODEL = SentenceTransformer(model_name, **kwargs)
     return _EMBED_MODEL
 
 
@@ -121,7 +169,14 @@ def _ensure_chroma_collection() -> Any:
         return _CHROMA_COLLECTION
     _chroma_dir().mkdir(parents=True, exist_ok=True)
     if _CHROMA_CLIENT is None:
-        _CHROMA_CLIENT = chromadb.PersistentClient(path=str(_chroma_dir()), settings=Settings(anonymized_telemetry=False))
+        _CHROMA_CLIENT = chromadb.PersistentClient(
+            path=str(_chroma_dir()),
+            settings=Settings(
+                anonymized_telemetry=False,
+                # Disable the posthog background thread entirely
+                chroma_telemetry_impl="chromadb.telemetry.product.posthog.Posthog",
+            ),
+        )
     _CHROMA_COLLECTION = _CHROMA_CLIENT.get_or_create_collection(
         name="aura_memories",
         metadata={"hnsw:space": "cosine"},
