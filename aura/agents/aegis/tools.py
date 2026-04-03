@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import getpass as _gp
 import json
 import os
-import shlex
 import subprocess
 import sys
 import time
@@ -20,7 +20,6 @@ import psutil
 from aura.core.config import AppConfig, load_config
 from aura.core.event_bus import EventBus
 from aura.core.logging import get_logger
-from aura.core.platform import open_application as platform_open_application
 from aura.core.tools import ToolSpec, get_tool_registry
 
 from .models import ClipboardContent, CommandResult, GPUInfo, NetworkInterface, NetworkSnapshot, OperationResult, ProcessInfo, SystemSnapshot
@@ -32,10 +31,46 @@ _AUDIT_LOCK = asyncio.Lock()
 _MONITORS: dict[str, asyncio.Task[None]] = {}
 _CLIPBOARD_CACHE = ""
 _ENVIRONMENT: dict[str, str] = {}
+HF_SPACE = bool(os.environ.get("HF_SPACE"))
+
+DISPLAY_AVAILABLE = bool(os.environ.get("DISPLAY"))
+
+if not HF_SPACE and DISPLAY_AVAILABLE:
+    import mss  # type: ignore
+    from mss import tools as mss_tools  # type: ignore
+    import pyautogui  # type: ignore
+    import pygetwindow  # type: ignore
+    import pyperclip  # type: ignore
+else:  # pragma: no cover - imported only in hosted environments
+    mss = None  # type: ignore[assignment]
+    mss_tools = None  # type: ignore[assignment]
+    pyautogui = None  # type: ignore[assignment]
+    pygetwindow = None  # type: ignore[assignment]
+    pyperclip = None  # type: ignore[assignment]
 
 
 class AegisError(Exception):
     """Raised when an AEGIS action cannot be completed."""
+
+
+PC_CONTROL_ERROR = "PC control tools are not available in the hosted environment — run aura.local_client on your PC"
+
+
+def _pc_control_guard() -> None:
+    if HF_SPACE:
+        raise RuntimeError(PC_CONTROL_ERROR)
+
+
+def _optional_module(name: str, current: Any) -> Any:
+    if current is not None:
+        return current
+    module = sys.modules.get(name)
+    if module is not None:
+        return module
+    try:
+        return importlib.import_module(name)
+    except Exception:
+        return None
 
 
 
@@ -190,13 +225,12 @@ def _validate_shell_command(cmd: str) -> None:
         raise AegisError("shell injection patterns are not allowed")
 
 
-
 def run_shell_command(cmd: str, timeout_seconds: int = 30, working_dir: str | None = None) -> CommandResult:
+    _pc_control_guard()
     _validate_shell_command(cmd)
     start = time.monotonic()
-    argv = shlex.split(cmd)
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_seconds, cwd=working_dir, shell=False, check=False)
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout_seconds, cwd=working_dir, check=False)
         result = CommandResult(cmd, proc.stdout, proc.stderr, proc.returncode, int((time.monotonic() - start) * 1000))
         _append_audit("run_shell_command", {"command": cmd, "working_dir": working_dir}, True, result.exit_code)
         return result
@@ -234,9 +268,16 @@ def kill_process(name_or_pid: str, force: bool = False) -> OperationResult:
 
 
 
-def open_application(name: str, args: list[str] | None = None) -> OperationResult:
-    result = platform_open_application(name, args)
-    return OperationResult(result.ok, result.message, result.details or {})
+def open_application(name: str, args: list[str] | None = None) -> int:
+    _pc_control_guard()
+    app_args = args or []
+    if sys.platform.startswith("win"):
+        proc = subprocess.Popen(["cmd", "/c", "start", "", name, *app_args], shell=False)
+    elif sys.platform == "darwin":
+        proc = subprocess.Popen(["open", "-a", name, *app_args], shell=False)
+    else:
+        proc = subprocess.Popen(["xdg-open", name, *app_args], shell=False)
+    return proc.pid
 
 
 
@@ -255,10 +296,10 @@ def close_application(name: str, force: bool = False) -> OperationResult:
 
 def clipboard_read() -> ClipboardContent:
     global _CLIPBOARD_CACHE
+    _pc_control_guard()
     try:
-        import pyperclip
-
-        _CLIPBOARD_CACHE = pyperclip.paste() or _CLIPBOARD_CACHE
+        clipboard = _optional_module("pyperclip", pyperclip)
+        _CLIPBOARD_CACHE = clipboard.paste() or _CLIPBOARD_CACHE  # type: ignore[union-attr]
     except Exception:
         LOGGER.debug("clipboard-read-fallback", exc_info=True)
     return ClipboardContent(text=_CLIPBOARD_CACHE, timestamp=datetime.now(timezone.utc))
@@ -267,11 +308,11 @@ def clipboard_read() -> ClipboardContent:
 
 def clipboard_write(content: str) -> OperationResult:
     global _CLIPBOARD_CACHE
+    _pc_control_guard()
     _CLIPBOARD_CACHE = content
     try:
-        import pyperclip
-
-        pyperclip.copy(content)
+        clipboard = _optional_module("pyperclip", pyperclip)
+        clipboard.copy(content)  # type: ignore[union-attr]
     except Exception:
         LOGGER.debug("clipboard-write-fallback", exc_info=True)
     return OperationResult(True, "clipboard updated", {"length": len(content)})
@@ -279,19 +320,105 @@ def clipboard_write(content: str) -> OperationResult:
 
 
 def take_screenshot(region: dict[str, int] | None = None, save_path: str | None = None) -> str:
-    target_dir = CONFIG.paths.data_dir / "screenshots"
+    _pc_control_guard()
+    target_dir = Path.home() / ".aura" / "screenshots"
     target_dir.mkdir(parents=True, exist_ok=True)
-    path = Path(save_path) if save_path is not None else target_dir / f"{uuid.uuid4()}.png"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    path = Path(save_path) if save_path is not None else target_dir / f"screenshot_{timestamp}.png"
     try:
-        import mss
-
-        with mss.mss() as sct:
-            monitor = region or sct.monitors[0]
+        screenshot_module = _optional_module("mss", mss)
+        screenshot_tools = _optional_module("mss.tools", mss_tools) or getattr(screenshot_module, "tools", None)
+        with screenshot_module.mss() as sct:  # type: ignore[union-attr]
+            monitor = region or sct.monitors[1 if len(sct.monitors) > 1 else 0]
             sct_img = sct.grab(monitor)
-            mss.tools.to_png(sct_img.rgb, sct_img.size, output=str(path))
+            screenshot_tools.to_png(sct_img.rgb, sct_img.size, output=str(path))  # type: ignore[union-attr]
     except Exception:
         path.write_bytes(b"AEGIS-SCREENSHOT")
     return str(path)
+
+
+def click(x: int, y: int, button: str = "left") -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.click(x, y, button=button)  # type: ignore[union-attr]
+
+
+def double_click(x: int, y: int) -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.doubleClick(x, y)  # type: ignore[union-attr]
+
+
+def type_text(text: str, interval: float = 0.05) -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.write(text, interval=interval)  # type: ignore[union-attr]
+
+
+def hotkey(*keys: str) -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.hotkey(*keys)  # type: ignore[union-attr]
+
+
+def move_mouse(x: int, y: int, duration: float = 0.3) -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.moveTo(x, y, duration=duration)  # type: ignore[union-attr]
+
+
+def scroll(x: int, y: int, clicks: int) -> None:
+    _pc_control_guard()
+    pyautogui_module = _optional_module("pyautogui", pyautogui)
+    pyautogui_module.scroll(clicks, x=x, y=y)  # type: ignore[union-attr]
+
+
+def get_clipboard() -> str:
+    _pc_control_guard()
+    clipboard = _optional_module("pyperclip", pyperclip)
+    return str(clipboard.paste() or "")  # type: ignore[union-attr]
+
+
+def set_clipboard(text: str) -> bool:
+    _pc_control_guard()
+    clipboard = _optional_module("pyperclip", pyperclip)
+    clipboard.copy(text)  # type: ignore[union-attr]
+    return True
+
+
+def find_window(title_contains: str) -> list[str]:
+    _pc_control_guard()
+    if sys.platform.startswith("win"):
+        titles = []
+        window_module = _optional_module("pygetwindow", pygetwindow)
+        for window in window_module.getAllTitles():  # type: ignore[union-attr]
+            if title_contains.lower() in window.lower():
+                titles.append(window)
+        return titles
+    proc = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, check=False)
+    titles = []
+    for line in proc.stdout.splitlines():
+        if title_contains.lower() in line.lower():
+            parts = line.split(None, 3)
+            titles.append(parts[3] if len(parts) > 3 else line)
+    return titles
+
+
+def focus_window(title_contains: str) -> bool:
+    _pc_control_guard()
+    matches = find_window(title_contains)
+    if not matches:
+        return False
+    title = matches[0]
+    if sys.platform.startswith("win"):
+        window_module = _optional_module("pygetwindow", pygetwindow)
+        for window in window_module.getWindowsWithTitle(title):  # type: ignore[union-attr]
+            if title_contains.lower() in window.title.lower():
+                window.activate()
+                return True
+        return False
+    proc = subprocess.run(["wmctrl", "-a", title], capture_output=True, text=True, check=False)
+    return proc.returncode == 0
 
 
 
@@ -376,18 +503,6 @@ def set_environment_variable(name: str, value: str) -> OperationResult:
     return OperationResult(True, "environment updated", {"name": name})
 
 
-def get_clipboard() -> str:
-    """Return clipboard text using the existing read helper."""
-
-    return clipboard_read().text
-
-
-def set_clipboard(text: str) -> bool:
-    """Set clipboard text using the existing write helper."""
-
-    return clipboard_write(text).success
-
-
 def set_env_var(key: str, value: str) -> OperationResult:
     """Compatibility wrapper for setting environment variables."""
 
@@ -409,11 +524,19 @@ def register_aegis_tools() -> None:
         ToolSpec("get_process", "Get a process by name or pid.", 1, {"type": "object"}, {"type": "object"}, lambda args: get_process(args["name_or_pid"])),
         ToolSpec("kill_process", "Kill a process.", 3, {"type": "object"}, {"type": "object"}, lambda args: kill_process(args["name_or_pid"], args.get("force", False))),
         ToolSpec("run_shell_command", "Run a shell command.", 3, {"type": "object"}, {"type": "object"}, lambda args: run_shell_command(args["cmd"], args.get("timeout_seconds", 30), args.get("working_dir"))),
-        ToolSpec("open_application", "Open an application.", 2, {"type": "object"}, {"type": "object"}, lambda args: open_application(args["name"], args.get("args"))),
+        ToolSpec("open_application", "Open an application.", 2, {"type": "object"}, {"type": "integer"}, lambda args: open_application(args["name"], args.get("args"))),
         ToolSpec("close_application", "Close an application.", 3, {"type": "object"}, {"type": "object"}, lambda args: close_application(args["name"], args.get("force", False))),
         ToolSpec("clipboard_read", "Read clipboard text.", 1, {"type": "object"}, {"type": "object"}, lambda _args: clipboard_read()),
         ToolSpec("clipboard_write", "Write clipboard text.", 1, {"type": "object"}, {"type": "object"}, lambda args: clipboard_write(args["content"])),
         ToolSpec("take_screenshot", "Take a screenshot.", 1, {"type": "object"}, {"type": "string"}, lambda args: take_screenshot(args.get("region"), args.get("save_path"))),
+        ToolSpec("click", "Click at coordinates.", 2, {"type": "object"}, {"type": "object"}, lambda args: click(args["x"], args["y"], args.get("button", "left"))),
+        ToolSpec("double_click", "Double click at coordinates.", 2, {"type": "object"}, {"type": "object"}, lambda args: double_click(args["x"], args["y"])),
+        ToolSpec("type_text", "Type text.", 2, {"type": "object"}, {"type": "object"}, lambda args: type_text(args["text"], args.get("interval", 0.05))),
+        ToolSpec("hotkey", "Press a keyboard shortcut.", 2, {"type": "object"}, {"type": "object"}, lambda args: hotkey(*args.get("keys", []))),
+        ToolSpec("move_mouse", "Move the mouse.", 1, {"type": "object"}, {"type": "object"}, lambda args: move_mouse(args["x"], args["y"], args.get("duration", 0.3))),
+        ToolSpec("scroll", "Scroll the mouse wheel.", 2, {"type": "object"}, {"type": "object"}, lambda args: scroll(args["x"], args["y"], args["clicks"])),
+        ToolSpec("find_window", "Find a window by title.", 1, {"type": "object"}, {"type": "array"}, lambda args: find_window(args["title_contains"])),
+        ToolSpec("focus_window", "Focus a window by title.", 2, {"type": "object"}, {"type": "object"}, lambda args: {"focused": focus_window(args["title_contains"])}),
         ToolSpec("get_network_info", "Get network stats.", 1, {"type": "object"}, {"type": "object"}, lambda _args: get_network_info()),
         ToolSpec("monitor_resource", "Monitor a resource.", 1, {"type": "object"}, {"type": "string"}, lambda args: monitor_resource(args["resource"], args["threshold"], args["action"], args.get("check_interval_seconds", 30))),
         ToolSpec("cancel_monitor", "Cancel a monitor.", 1, {"type": "object"}, {"type": "object"}, lambda args: cancel_monitor(args["monitor_id"])),

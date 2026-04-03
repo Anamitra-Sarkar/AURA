@@ -1,83 +1,44 @@
-import { Bot, Cpu, FileText, LogOut, MoonStar, RefreshCw, Send, Shield, Users, Workflow } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { ChatMessage } from './components/ChatMessage';
+import { MoonStar, Send, LogOut, ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useAuraClient } from './hooks/useAuraClient';
+import type { AuraMessage } from './types';
 
-const pages = [
-  { to: '/', label: 'Chat', icon: Bot },
-  { to: '/workflows', label: 'Workflows', icon: Workflow },
-  { to: '/memory', label: 'Memory', icon: FileText },
-  { to: '/agents', label: 'Agents', icon: Users },
-  { to: '/system', label: 'System', icon: Cpu },
-];
-
-function Shell({ title, children, onLogout }: { title: string; children: ReactNode; onLogout?: () => void }) {
-  return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">AURA</div>
-        <nav>
-          {pages.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Icon size={16} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">Fully local · Fully free</div>
-            <h1>{title}</h1>
-          </div>
-          <div className="topbar-actions">
-            <div className="status-pill">
-              <MoonStar size={14} />
-              Dark
-            </div>
-            {onLogout ? (
-              <button type="button" className="ghost-button" onClick={onLogout}>
-                <LogOut size={14} />
-                Logout
-              </button>
-            ) : null}
-          </div>
-        </header>
-        <section className="content">{children}</section>
-      </main>
-    </div>
-  );
+function formatTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function Card({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="card">
-      <div className="card-header">
-        <h2>{title}</h2>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
+function statusClass(status?: string): string {
+  if (status === 'error') {
+    return 'status-error';
+  }
+  if (status === 'ready' || status === 'active') {
+    return 'status-ready';
+  }
+  return 'status-idle';
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
+function HealthDot({ ok }: { ok: boolean }) {
+  return <span className={`health-dot ${ok ? 'status-ready' : 'status-error'}`} aria-hidden="true" />;
 }
 
-function AuthScreen({ client }: { client: ReturnType<typeof useAuraClient> }) {
+function AgentDot({ status }: { status?: string }) {
+  return <span className={`agent-dot ${statusClass(status)}`} aria-hidden="true" />;
+}
+
+function LoginScreen({ client }: { client: ReturnType<typeof useAuraClient> }) {
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    await client.login();
+  };
+
   return (
-    <div className="auth-shell">
-      <div className="auth-card">
-        <div className="brand">AURA</div>
-        <p className="muted">Log in to access the live chat, workflow controls, memory browser, agent list, and system dashboard.</p>
+    <div className="login-screen">
+      <form className="login-card" onSubmit={submit}>
+        <div className="brand-lockup">
+          <div className="brand-word">AURA</div>
+          <p>Your personal AI agent</p>
+        </div>
         <label className="field">
           <span>Username</span>
           <input value={client.username} onChange={(event) => client.setUsername(event.target.value)} autoComplete="username" />
@@ -86,317 +47,271 @@ function AuthScreen({ client }: { client: ReturnType<typeof useAuraClient> }) {
           <span>Password</span>
           <input type="password" value={client.password} onChange={(event) => client.setPassword(event.target.value)} autoComplete="current-password" />
         </label>
-        <div className="row">
-          <button type="button" onClick={() => void client.login()} disabled={client.isSubmittingAuth || !client.username || !client.password}>
-            Log in
-          </button>
-          <button type="button" className="secondary-button" onClick={() => void client.register()} disabled={client.isSubmittingAuth || !client.username || !client.password}>
-            Register
-          </button>
-        </div>
-        {client.authError ? <p className="error">{client.authError}</p> : null}
-      </div>
+        {client.authError ? <p className="error-text">{client.authError}</p> : null}
+        <button type="submit" className="primary-button" disabled={client.isSubmittingAuth || !client.username || !client.password}>
+          Sign in
+        </button>
+      </form>
     </div>
   );
 }
 
-function ChatPage({ client }: { client: ReturnType<typeof useAuraClient> }) {
-  const workflowCount = client.snapshot?.active_workflows.length ?? client.workflows.length;
-  const memoryCount = client.snapshot?.recent_memories.length ?? client.memories.length;
-  const eventCount = client.events.length;
-  const voiceModeLabel = useMemo(() => (client.snapshot?.lyra_status?.voice_mode ? 'On' : 'Off'), [client.snapshot]);
+function MessageBubble({ message }: { message: AuraMessage }) {
+  const isAssistant = message.role === 'assistant';
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   return (
-    <div className="workspace">
-      <div className="workspace-main">
-        <Card
-          title="Command console"
-          action={
-            <button type="button" className="ghost-button" onClick={() => void client.refreshAll()}>
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-          }
-        >
-          <div className="status-row">
-            <Metric label="Connection" value={client.connectionState} />
-            <Metric label="Workflows" value={`${workflowCount}`} />
-            <Metric label="Memories" value={`${memoryCount}`} />
-            <Metric label="Lyra" value={voiceModeLabel} />
+    <article className={`chat-message ${isAssistant ? 'assistant' : 'user'}`}>
+      <div className="message-shell">
+        {isAssistant ? (
+          <>
+            {message.isThinking && !message.content ? <div className="thinking">AURA is thinking…</div> : null}
+            {message.content ? (
+              <div className="markdown">
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+                {message.isStreaming ? <span className="cursor">▋</span> : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="user-bubble">
+            <p>{message.content}</p>
           </div>
+        )}
+        <div className="message-footer">
+          <span>{isAssistant ? 'AURA' : 'You'}</span>
+          <span>{formatTime(message.createdAt)}</span>
+        </div>
+        {isAssistant && message.tools && message.tools.length > 0 ? (
+          <div className="tools-block">
+            <button type="button" className="tools-toggle" onClick={() => setToolsOpen((current) => !current)}>
+              {toolsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Tools used ({message.tools.length})
+            </button>
+            {toolsOpen ? (
+              <div className="tools-list">
+                {message.tools.map((tool) => (
+                  <div key={`${message.id}-${tool.tool}`} className="tool-row">
+                    <strong>{tool.tool}</strong>
+                    <span>{tool.summary}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
 
-          <div className="chat-log">
-            {client.messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
+function ChatComposer({
+  value,
+  onChange,
+  onSend,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => Promise<void>;
+  disabled: boolean;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+  }, [value]);
+
+  const handleKeyDown = async (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      await onSend();
+    }
+  };
+
+  return (
+    <div className="composer">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          void handleKeyDown(event);
+        }}
+        placeholder="Ask AURA to research, plan, browse, or control the PC..."
+        rows={1}
+      />
+      <button type="button" className="primary-button send-button" onClick={() => void onSend()} disabled={disabled || !value.trim()}>
+        <Send size={16} />
+      </button>
+    </div>
+  );
+}
+
+function AppShell({ client }: { client: ReturnType<typeof useAuraClient> }) {
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const feedScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedAgentId && client.agents.length > 0) {
+      setSelectedAgentId(client.agents[0].id);
+    }
+  }, [client.agents, selectedAgentId]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [client.messages]);
+
+  useEffect(() => {
+    if (feedScrollRef.current) {
+      feedScrollRef.current.scrollTop = 0;
+    }
+  }, [client.toolFeed]);
+
+  const selectedAgent = useMemo(
+    () => client.agents.find((agent) => agent.id === selectedAgentId) ?? client.agents[0] ?? null,
+    [client.agents, selectedAgentId],
+  );
+
+  const health = client.health;
+
+  return (
+    <div className={`app-shell theme-${client.theme}`}>
+      <header className="header">
+        <div className="brand-block">
+          <div className="brand-word">AURA</div>
+          <span>Your personal AI agent</span>
+        </div>
+        <div className="header-actions">
+          <div className="user-pill">{client.currentUser || 'Signed in'}</div>
+          <button type="button" className="ghost-button" onClick={client.toggleTheme}>
+            <MoonStar size={16} />
+            {client.theme === 'dark' ? 'Dark' : 'Light'}
+          </button>
+          <button type="button" className="ghost-button" onClick={client.logout}>
+            <LogOut size={16} />
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <main className="layout">
+        <aside className="panel left-panel">
+          <div className="panel-heading">
+            <h2>Agents</h2>
+            <span>{client.agents.length} online cards</span>
+          </div>
+          <div className="agent-list">
+            {client.agents.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                className={`agent-row ${selectedAgentId === agent.id ? 'selected' : ''}`}
+                onClick={() => setSelectedAgentId(agent.id)}
+                title={agent.description}
+              >
+                <AgentDot status={agent.status || (selectedAgentId === agent.id ? 'ready' : 'idle')} />
+                <span>{agent.name}</span>
+              </button>
             ))}
           </div>
-
-          <form
-            className="chat-form"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await client.sendMessage();
-            }}
-          >
-            <label className="field field-expand">
-              <span>Task</span>
-              <textarea
-                rows={5}
-                value={client.draft}
-                onChange={(event) => client.setDraft(event.target.value)}
-                placeholder="Ask AURA to plan, research, control the PC, or summarize the current state."
-              />
-            </label>
-            <div className="row">
-              <label className="field">
-                <span>Importance</span>
-                <select value={client.importance} onChange={(event) => client.setImportance(Number(event.target.value))}>
-                  <option value={1}>Quick</option>
-                  <option value={2}>Normal</option>
-                  <option value={3}>Deep</option>
-                  <option value={4}>Ensemble</option>
-                </select>
-              </label>
-              <button type="submit" disabled={client.isSending || !client.draft.trim()}>
-                <Send size={16} />
-                {client.isSending ? 'Sending' : 'Send'}
-              </button>
+          <div className="agent-info">
+            <div className="agent-info-header">
+              <strong>{selectedAgent?.name || 'Select an agent'}</strong>
+              <span>{selectedAgent?.id || '—'}</span>
             </div>
-            {client.error ? <p className="error">{client.error}</p> : null}
-          </form>
-        </Card>
-      </div>
-
-      <aside className="workspace-side">
-        <Card title="Live state" action={<button type="button" className="ghost-button" onClick={() => void client.refreshSystem()}><RefreshCw size={14} />Refresh</button>}>
-          <div className="summary-list">
-            <div>
-              <h3>System health</h3>
-              <p>
-                CPU {client.snapshot?.system_health.cpu_pct ?? '—'}% · RAM {client.snapshot?.system_health.ram_pct ?? '—'}% · Disk{' '}
-                {client.snapshot?.system_health.disk_pct ?? '—'}%
-              </p>
-            </div>
-            <div>
-              <h3>Lyra</h3>
-              <p>
-                Listening: {client.snapshot?.lyra_status.listening ? 'yes' : 'no'} · Voice mode: {voiceModeLabel} · Engine:{' '}
-                {client.snapshot?.lyra_status.wake_engine ?? '—'}
-              </p>
-            </div>
-            <div>
-              <h3>Recent events</h3>
-              <p>{eventCount} websocket event{eventCount === 1 ? '' : 's'} captured</p>
-            </div>
+            <p>{selectedAgent?.description || 'Click an agent to view its description.'}</p>
           </div>
-
-          <div className="panel-list">
-            <section>
-              <h3>Active workflows</h3>
-              {client.workflows.slice(0, 3).map((workflow) => (
-                <div className="panel-item" key={workflow.id}>
-                  <strong>{workflow.name || workflow.id}</strong>
-                  <span>{workflow.status} · {workflow.steps.length} step(s)</span>
-                </div>
-              ))}
-              {!client.workflows.length ? <p className="muted">No active workflows yet.</p> : null}
-            </section>
-
-            <section>
-              <h3>Recent memories</h3>
-              {client.memories.slice(0, 3).map((memory) => (
-                <div className="panel-item" key={memory.id}>
-                  <strong>{memory.key || memory.id}</strong>
-                  <span>{memory.preview}</span>
-                </div>
-              ))}
-              {!client.memories.length ? <p className="muted">No memories yet.</p> : null}
-            </section>
+          <div className="connection-card">
+            <AgentDot status={client.connectionState === 'connected' ? 'ready' : 'error'} />
+            <span>{client.connectionState === 'connected' ? 'Connected' : 'Disconnected'}</span>
           </div>
-        </Card>
+        </aside>
 
-        <Card title="Event stream">
-          <div className="event-log">
-            {client.events.length ? (
-              client.events.map((event) => (
-                <div className="event-item" key={event.id}>
-                  <strong>{event.type}</strong>
-                  <span>{event.summary}</span>
+        <section className="panel center-panel">
+          <div className="panel-heading">
+            <h2>Chat</h2>
+            <button type="button" className="ghost-button" onClick={() => void client.refreshAll()}>
+              Refresh
+            </button>
+          </div>
+          <div className="chat-feed" ref={chatScrollRef}>
+            {client.messages.map((message) => (
+              <MessageBubble key={message.id} message={message} />
+            ))}
+            {client.isSending ? <div className="skeleton-row" /> : null}
+          </div>
+          <div className="composer-frame">
+            {client.error ? <p className="error-text">{client.error}</p> : null}
+            <ChatComposer value={client.draft} onChange={client.setDraft} onSend={client.sendMessage} disabled={client.isSending || !client.isAuthenticated} />
+          </div>
+        </section>
+
+        <aside className="panel right-panel">
+          <div className="panel-heading">
+            <h2>Live feed</h2>
+            <span>{client.toolFeed.length} events</span>
+          </div>
+          <div className="feed-list" ref={feedScrollRef}>
+            {client.toolFeed.length > 0 ? (
+              client.toolFeed.map((entry) => (
+                <div className="feed-row" key={entry.id}>
+                  <span className="feed-icon">{entry.icon}</span>
+                  <div>
+                    <strong>{entry.agent}</strong>
+                    <p>{entry.action}</p>
+                  </div>
+                  <time>{formatTime(entry.timestamp)}</time>
                 </div>
               ))
             ) : (
-              <p className="muted">Waiting for websocket events...</p>
+              <p className="muted">Waiting for live tool calls...</p>
             )}
           </div>
-        </Card>
-      </aside>
-    </div>
-  );
-}
 
-function WorkflowsPage({ client }: { client: ReturnType<typeof useAuraClient> }) {
-  return (
-    <Card title="Workflows" action={<button type="button" className="ghost-button" onClick={() => void client.refreshAll()}><RefreshCw size={14} />Refresh</button>}>
-      <div className="stack">
-        {client.workflows.map((workflow) => (
-          <section className="panel-item" key={workflow.id}>
-            <div className="panel-item-header">
-              <div>
-                <strong>{workflow.name || workflow.id}</strong>
-                <p className="muted">{workflow.description}</p>
-              </div>
-              <div className="row">
-                <button type="button" className="secondary-button" onClick={() => void client.pauseWorkflow(workflow.id)}>Pause</button>
-                <button type="button" className="secondary-button" onClick={() => void client.resumeWorkflow(workflow.id)}>Resume</button>
-                <button type="button" className="secondary-button" onClick={() => void client.cancelWorkflow(workflow.id)}>Cancel</button>
-              </div>
+          <div className="stats-card">
+            <div className="stat-row">
+              <span>Memory count</span>
+              <strong>{client.memoryCount}</strong>
             </div>
-
-            <div className="step-list">
-              {workflow.steps.map((step) => (
-                <div className="step-item" key={step.id}>
-                  <div>
-                    <strong>{step.name}</strong>
-                    <p className="muted">{step.description}</p>
-                    <p className="muted">Tool: {step.tool_name} · Status: {step.status}</p>
-                  </div>
-                  {step.status === 'waiting_approval' || step.requires_approval ? (
-                    <button type="button" onClick={() => void client.approveWorkflowStep(workflow.id, step.id)}>Approve</button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-        {!client.workflows.length ? <p className="muted">No workflows available.</p> : null}
-      </div>
-    </Card>
-  );
-}
-
-function MemoryPage({ client }: { client: ReturnType<typeof useAuraClient> }) {
-  const [query, setQuery] = useState('');
-
-  return (
-    <Card
-      title="Memory"
-      action={
-        <div className="row">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search memories" />
-          <button type="button" className="secondary-button" onClick={() => void client.loadMemories(query)}>Search</button>
-        </div>
-      }
-    >
-      <div className="stack">
-        {client.memories.map((memory) => (
-          <div className="panel-item" key={memory.id}>
-            <div className="panel-item-header">
-              <div>
-                <strong>{memory.key}</strong>
-                <p className="muted">{memory.category}</p>
-              </div>
-              <button type="button" className="secondary-button" onClick={() => void client.deleteMemory(memory.id)}>
-                Delete
-              </button>
-            </div>
-            <p>{memory.preview}</p>
-          </div>
-        ))}
-        {!client.memories.length ? <p className="muted">No memory results.</p> : null}
-      </div>
-    </Card>
-  );
-}
-
-function AgentsPage({ client }: { client: ReturnType<typeof useAuraClient> }) {
-  return (
-    <Card title="Agents" action={<button type="button" className="ghost-button" onClick={() => void client.refreshAgents()}><RefreshCw size={14} />Refresh</button>}>
-      <div className="stack">
-        {client.agents.map((agent) => (
-          <div className="panel-item" key={agent.id}>
-            <strong>{agent.name}</strong>
-            <p className="muted">{agent.description}</p>
-            <div className="chip-row">
-              {(agent.capabilities ?? []).map((capability) => (
-                <span className="chip" key={capability}>{capability}</span>
-              ))}
+            <div className="stat-row">
+              <span>Active workflows</span>
+              <strong>{client.activeWorkflowsCount}</strong>
             </div>
           </div>
-        ))}
-        {!client.agents.length ? <p className="muted">No agents available.</p> : null}
-      </div>
-    </Card>
-  );
-}
 
-function SystemPage({ client }: { client: ReturnType<typeof useAuraClient> }) {
-  return (
-    <div className="stack">
-      <Card
-        title="System"
-        action={
-          <div className="row">
-            <button type="button" className="ghost-button" onClick={() => void client.refreshSystem()}>
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-            <button type="button" className="ghost-button" onClick={async () => { await client.takeScreenshot(); }}>
-              <Shield size={14} />
-              Screenshot
-            </button>
-          </div>
-        }
-      >
-        <div className="status-row">
-          <Metric label="CPU" value={`${client.snapshot?.system_health.cpu_pct ?? '—'}%`} />
-          <Metric label="RAM" value={`${client.snapshot?.system_health.ram_pct ?? '—'}%`} />
-          <Metric label="Disk" value={`${client.snapshot?.system_health.disk_pct ?? '—'}%`} />
-          <Metric label="Uptime" value={`${client.snapshot?.system_health.uptime ?? '—'}s`} />
-        </div>
-      </Card>
-
-      <Card title="Phantom tasks">
-        <div className="stack">
-          {client.phantomTasks.map((task) => (
-            <div className="panel-item" key={task.id}>
-              <div className="panel-item-header">
-                <div>
-                  <strong>{task.name}</strong>
-                  <p className="muted">{task.description}</p>
-                </div>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => void client.togglePhantomTask(task.id, !task.enabled)}
-                >
-                  {task.enabled ? 'Disable' : 'Enable'}
-                </button>
-              </div>
-              <p className="muted">Schedule: {task.schedule} · Next run: {task.next_run ?? '—'}</p>
+          <div className="health-card">
+            <div className="health-row">
+              <HealthDot ok={health?.router.ok ?? false} />
+              <span>LLM Router</span>
+              <strong>{health?.router.ok ? 'Online' : 'Offline'}</strong>
             </div>
-          ))}
-          {!client.phantomTasks.length ? <p className="muted">No phantom tasks available.</p> : null}
-        </div>
-      </Card>
+            <div className="health-row">
+              <HealthDot ok={health?.memory.ok ?? false} />
+              <span>Memory</span>
+              <strong>{health?.memory.ok ? 'Online' : 'Offline'}</strong>
+            </div>
+            <div className="health-row">
+              <HealthDot ok={health?.local_pc.ok ?? false} />
+              <span>Local PC</span>
+              <strong>{health?.local_pc.ok ? 'Online' : 'Offline'}</strong>
+            </div>
+          </div>
+        </aside>
+      </main>
     </div>
   );
 }
 
 export default function App() {
   const client = useAuraClient();
-
-  if (client.needsAuth) {
-    return <AuthScreen client={client} />;
-  }
-
-  return (
-    <Routes>
-      <Route path="/" element={<Shell title="Chat" onLogout={client.logout}><ChatPage client={client} /></Shell>} />
-      <Route path="/workflows" element={<Shell title="Workflows" onLogout={client.logout}><WorkflowsPage client={client} /></Shell>} />
-      <Route path="/memory" element={<Shell title="Memory" onLogout={client.logout}><MemoryPage client={client} /></Shell>} />
-      <Route path="/agents" element={<Shell title="Agents" onLogout={client.logout}><AgentsPage client={client} /></Shell>} />
-      <Route path="/system" element={<Shell title="System" onLogout={client.logout}><SystemPage client={client} /></Shell>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+  return client.isAuthenticated ? <AppShell client={client} /> : <LoginScreen client={client} />;
 }

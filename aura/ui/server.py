@@ -72,6 +72,12 @@ EVENT_TYPES = {
     "mneme.memory_saved",
     "aura.error",
 }
+AUTH_EXEMPT_PATHS = {
+    "/auth/login",
+    "/auth/register",
+    "/api/auth/login",
+    "/api/auth/register",
+}
 
 
 class MessageRequest(BaseModel):
@@ -348,8 +354,9 @@ app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     runtime = get_runtime()
-    if runtime.auth_manager is not None and (
-        request.url.path.startswith("/api/") or request.url.path.startswith("/a2a/") or request.url.path.startswith("/mcp/")
+    path = request.url.path
+    if runtime.auth_manager is not None and path not in AUTH_EXEMPT_PATHS and (
+        path.startswith("/api/") or path.startswith("/a2a/") or path.startswith("/mcp/")
     ):
         _require_token(request)
     return await call_next(request)
@@ -381,6 +388,11 @@ async def auth_register(payload: dict[str, str]) -> dict[str, Any]:
     return manager.register(payload["username"], payload["password"])
 
 
+@app.post("/api/auth/register")
+async def api_auth_register(payload: dict[str, str]) -> dict[str, Any]:
+    return await auth_register(payload)
+
+
 @app.post("/auth/login")
 async def auth_login(payload: dict[str, str]) -> dict[str, Any]:
     manager = _auth_manager()
@@ -389,6 +401,11 @@ async def auth_login(payload: dict[str, str]) -> dict[str, Any]:
     if not payload.get("username") or not payload.get("password"):
         raise HTTPException(status_code=400, detail="username and password required")
     return manager.login(payload["username"], payload["password"])
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(payload: dict[str, str]) -> dict[str, Any]:
+    return await auth_login(payload)
 
 
 @app.get("/auth/me")
@@ -400,9 +417,32 @@ async def auth_me(request: Request) -> dict[str, Any]:
     return {"user_id": user_id}
 
 
+@app.get("/api/auth/me")
+async def api_auth_me(request: Request) -> dict[str, Any]:
+    return await auth_me(request)
+
+
 @app.get("/api/state")
 async def api_state() -> dict[str, Any]:
     return build_state_snapshot()
+
+
+@app.get("/api/health")
+async def api_health() -> dict[str, Any]:
+    runtime = get_runtime()
+    memory_ok = True
+    try:
+        list_memories(limit=1)
+    except Exception:
+        memory_ok = False
+    model_name = str(getattr(getattr(runtime.config, "primary_model", None), "name", ""))
+    local_pc_ok = not aegis_tools.HF_SPACE
+    return {
+        "router": {"ok": bool(model_name), "model": model_name},
+        "memory": {"ok": memory_ok},
+        "local_pc": {"ok": local_pc_ok},
+        "status": "ok" if model_name and memory_ok else "degraded",
+    }
 
 
 @app.post("/api/message", response_model=None)
@@ -421,7 +461,7 @@ async def api_message(payload: MessageRequest, request: Request) -> StreamingRes
         response_text = str(_result_value(result, "response", "") or "")
         for chunk in response_text.split():
             yield f"data: {json.dumps({'token': chunk + ' ', 'done': False}, ensure_ascii=True)}\n\n"
-        yield f"data: {json.dumps({'token': '', 'done': True, 'tools_called': _result_value(result, 'tools_called', []), 'reasoning_used': bool(_result_value(result, 'reasoning_used', False)), 'used_ensemble': bool(_result_value(result, 'used_ensemble', False))}, ensure_ascii=True)}\n\n"
+        yield f"data: {json.dumps({'token': '', 'done': True, 'tools_called': _result_value(result, 'tools_called', []), 'steps': _result_value(result, 'steps', []), 'reasoning_used': bool(_result_value(result, 'reasoning_used', False)), 'used_ensemble': bool(_result_value(result, 'used_ensemble', False))}, ensure_ascii=True)}\n\n"
 
     async def event_stream():
         if runtime.orchestrator is not None:
@@ -460,15 +500,19 @@ async def api_message(payload: MessageRequest, request: Request) -> StreamingRes
             "used_ensemble": _result_value(result, "used_ensemble", False),
             "tools_called": _result_value(result, "tools_called", []),
             "reasoning_used": _result_value(result, "reasoning_used", False),
+            "steps": _result_value(result, "steps", []),
         }
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/a2a/agents")
-async def a2a_agents() -> list[dict[str, Any]]:
+async def a2a_agents(include_hidden: bool = False) -> list[dict[str, Any]]:
     registry = AgentRegistry()
-    return [_serialize(card) for card in registry.list_all()]
+    cards = registry.list_all()
+    if not include_hidden:
+        cards = [card for card in cards if getattr(card, "id", "") not in {"mobile", "nexus"}]
+    return [_serialize(card) for card in cards]
 
 
 @app.get("/a2a/agents/{agent_id}")
@@ -557,6 +601,11 @@ async def api_memories(query: str = "", category: str | None = None, limit: int 
         ]
     memories = list_memories(category=category, limit=limit)
     return [_memory_summary(memory) for memory in memories]
+
+
+@app.get("/api/memories/count")
+async def api_memories_count() -> dict[str, int]:
+    return {"count": len(list_memories(limit=1_000_000))}
 
 
 @app.delete("/api/memories/{memory_id}")
@@ -737,6 +786,17 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
 
 @app.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token") or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    manager = _auth_manager()
+    if manager is not None:
+        if not token:
+            await websocket.close(code=4401)
+            return
+        try:
+            manager.verify_token(token)
+        except AuthError:
+            await websocket.close(code=4401)
+            return
     await websocket.accept()
     _CONNECTED_CLIENTS.add(websocket)
     await websocket.send_json({"type": "state_snapshot", "data": build_state_snapshot(), "timestamp": datetime.now(timezone.utc).isoformat()})

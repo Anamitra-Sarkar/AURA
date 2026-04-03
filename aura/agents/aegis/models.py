@@ -67,6 +67,10 @@ class CommandResult:
     exit_code: int
     execution_time_ms: int
 
+    @property
+    def returncode(self) -> int:
+        return self.exit_code
+
 
 @dataclass(slots=True)
 class ClipboardContent:

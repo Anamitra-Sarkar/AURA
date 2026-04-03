@@ -9,18 +9,29 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+import collections
 from pathlib import Path
 from typing import Any
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 
 import dateparser
+for _name, _value in {
+    "Mapping": Mapping,
+    "MutableMapping": MutableMapping,
+    "Sequence": Sequence,
+    "Iterable": Iterable,
+}.items():
+    if not hasattr(collections, _name):
+        setattr(collections, _name, _value)
+from ics import Calendar, Event as ICSEvent  # noqa: E402
 
-from aura.core.config import AppConfig, load_config
-from aura.core.event_bus import EventBus
-from aura.core.logging import get_logger
-from aura.core.platform import open_file, send_notification
-from aura.core.tools import ToolSpec, get_tool_registry
+from aura.core.config import AppConfig, load_config  # noqa: E402
+from aura.core.event_bus import EventBus  # noqa: E402
+from aura.core.logging import get_logger  # noqa: E402
+from aura.core.platform import open_file, send_notification  # noqa: E402
+from aura.core.tools import ToolSpec, get_tool_registry  # noqa: E402
 
-from .models import EmailDraft, Event, OperationResult, Reminder
+from .models import EmailDraft, Event, OperationResult, Reminder  # noqa: E402
 
 LOGGER = get_logger(__name__, component="echo")
 CONFIG: AppConfig = load_config()
@@ -162,6 +173,73 @@ def _row_to_draft(row: sqlite3.Row) -> EmailDraft:
     )
 
 
+def _calendar_path() -> Path:
+    """Return the ICS calendar path used by the new event tools."""
+
+    path = Path.home() / ".aura" / "calendar.ics"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    """Parse an ISO-8601 datetime and normalize it to UTC."""
+
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _event_datetime(value: Any) -> datetime | None:
+    """Normalize an ics datetime/arrow wrapper to UTC."""
+
+    if value is None:
+        return None
+    if hasattr(value, "datetime"):
+        dt = getattr(value, "datetime")
+    elif hasattr(value, "dt"):
+        dt = getattr(value, "dt")
+    else:
+        dt = value
+    if not isinstance(dt, datetime):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _load_calendar() -> Calendar:
+    """Load the on-disk calendar, creating an empty one when missing."""
+
+    path = _calendar_path()
+    if not path.exists():
+        calendar = Calendar()
+        path.write_text(calendar.serialize(), encoding="utf-8")
+        return calendar
+    return Calendar(path.read_text(encoding="utf-8"))
+
+
+def _save_calendar(calendar: Calendar) -> None:
+    """Persist a calendar to disk."""
+
+    _calendar_path().write_text(calendar.serialize(), encoding="utf-8")
+
+
+def _event_payload(event: ICSEvent) -> dict[str, Any]:
+    """Return a JSON-friendly event payload."""
+
+    begin = _event_datetime(event.begin)
+    end = _event_datetime(event.end)
+    return {
+        "uid": event.uid,
+        "title": event.name,
+        "start": begin.astimezone(timezone.utc).isoformat() if begin is not None else "",
+        "end": end.astimezone(timezone.utc).isoformat() if end is not None else "",
+        "description": event.description,
+        "location": event.location,
+    }
+
+
 def parse_natural_time(expression: str) -> str:
     """Convert a natural-language time expression into ISO 8601."""
 
@@ -217,22 +295,47 @@ def create_meeting(title: str, start: str, end: str, attendees: list[str], platf
         connection.close()
 
 
-def create_event(title: str, start_time: str, end_time: str, description: str = "", location: str = "") -> Event:
-    """Compatibility wrapper for the prompt's event API."""
+def create_event(title: str, start_iso: str, end_iso: str, description: str = "", location: str = "") -> str:
+    """Create a calendar event in the local ICS file."""
 
-    return create_meeting(title=title, start=start_time, end=end_time, attendees=[], platform=location or "local", description=description)
-
-
-def list_events(start_date: str, end_date: str, limit: int = 20) -> list[Event]:
-    """Compatibility wrapper that returns meetings in the requested range."""
-
-    return list_meetings({"start": start_date, "end": end_date})[:limit]
+    calendar = _load_calendar()
+    event = ICSEvent(name=title, begin=_parse_iso_datetime(start_iso), end=_parse_iso_datetime(end_iso), description=description, location=location)
+    calendar.events.add(event)
+    _save_calendar(calendar)
+    return str(event.uid)
 
 
-def delete_event(event_id: str) -> bool:
-    """Compatibility wrapper for deleting an event."""
+def list_events(from_iso: str, to_iso: str) -> list[dict[str, Any]]:
+    """List calendar events whose start time falls within the range."""
 
-    return cancel_meeting(event_id, notify_attendees=False).success
+    start = _parse_iso_datetime(from_iso)
+    end = _parse_iso_datetime(to_iso)
+    calendar = _load_calendar()
+    events = []
+    for event in calendar.events:
+        begin = _event_datetime(event.begin)
+        if begin is None:
+            continue
+        if start <= begin <= end:
+            events.append(_event_payload(event))
+    events.sort(key=lambda item: item["start"])
+    return events
+
+
+def delete_event(event_uid: str) -> dict[str, Any]:
+    """Delete an event by UID from the local ICS file."""
+
+    calendar = _load_calendar()
+    removed = False
+    for event in list(calendar.events):
+        if str(event.uid) == event_uid:
+            calendar.events.remove(event)
+            removed = True
+            break
+    if removed:
+        _save_calendar(calendar)
+        return {"deleted": True}
+    return {"deleted": False, "reason": "not found"}
 
 
 def remind_before(event_id: str, minutes_before: int) -> Reminder:
@@ -255,29 +358,47 @@ def remind_before(event_id: str, minutes_before: int) -> Reminder:
     )
 
 
-def find_free_slot(duration_minutes: int, after: str, before: str) -> dict[str, str] | None:
-    """Compatibility wrapper returning the next available slot."""
+def find_free_slot(date_iso: str, duration_minutes: int = 60) -> str | None:
+    """Find the first free slot on a day between 09:00 and 20:00 UTC."""
 
     if duration_minutes <= 0:
         return None
-    start_dt = dateparser.parse(after)
-    end_dt = dateparser.parse(before)
-    if start_dt is None or end_dt is None:
-        raise EchoError("invalid time range")
-    cursor = start_dt.astimezone(timezone.utc)
-    cutoff = end_dt.astimezone(timezone.utc)
+    day = _parse_iso_datetime(date_iso).date()
+    window_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).replace(hour=9)
+    window_end = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     target_delta = timedelta(minutes=duration_minutes)
-    events = sorted(list_events(after, before, limit=200), key=lambda event: event.start)
+    events = sorted(list_events(window_start.isoformat(), window_end.isoformat()), key=lambda item: item["start"])
+    cursor = window_start
     for event in events:
-        event_start = datetime.fromisoformat(event.start)
+        event_start = _parse_iso_datetime(event["start"])
+        event_end = _parse_iso_datetime(event["end"])
         if event_start - cursor >= target_delta:
-            return {"start": cursor.isoformat(), "end": (cursor + target_delta).isoformat()}
-        event_end = datetime.fromisoformat(event.end)
+            return cursor.isoformat()
         if event_end > cursor:
             cursor = event_end
-    if cutoff - cursor >= target_delta:
-        return {"start": cursor.isoformat(), "end": (cursor + target_delta).isoformat()}
+    if window_end - cursor >= target_delta:
+        return cursor.isoformat()
     return None
+
+
+def update_event(event_uid: str, title: str | None, start_iso: str | None, end_iso: str | None, description: str | None) -> dict[str, Any]:
+    """Update a calendar event and rewrite the ICS file."""
+
+    calendar = _load_calendar()
+    for event in list(calendar.events):
+        if str(event.uid) != event_uid:
+            continue
+        if title is not None:
+            event.name = title
+        if start_iso is not None:
+            event.begin = _parse_iso_datetime(start_iso)
+        if end_iso is not None:
+            event.end = _parse_iso_datetime(end_iso)
+        if description is not None:
+            event.description = description
+        _save_calendar(calendar)
+        return {"updated": True, "event": _event_payload(event)}
+    return {"updated": False, "reason": "not found"}
 
 
 def update_meeting(event_id: str, changes: dict[str, Any]) -> Event:
@@ -440,6 +561,11 @@ def register_echo_tools() -> None:
 
     registry = get_tool_registry()
     specs = [
+        ToolSpec("create_event", "Create a calendar event in the ICS file.", 1, {"type": "object", "properties": {"title": {"type": "string"}, "start_iso": {"type": "string"}, "end_iso": {"type": "string"}, "description": {"type": "string"}, "location": {"type": "string"}}, "required": ["title", "start_iso", "end_iso"], "additionalProperties": False}, {"type": "string"}, lambda args: create_event(args["title"], args["start_iso"], args["end_iso"], args.get("description", ""), args.get("location", ""))),
+        ToolSpec("list_events", "List calendar events in a range.", 1, {"type": "object", "properties": {"from_iso": {"type": "string"}, "to_iso": {"type": "string"}}, "required": ["from_iso", "to_iso"], "additionalProperties": False}, {"type": "array"}, lambda args: list_events(args["from_iso"], args["to_iso"])),
+        ToolSpec("delete_event", "Delete a calendar event by UID.", 2, {"type": "object", "properties": {"event_uid": {"type": "string"}}, "required": ["event_uid"], "additionalProperties": False}, {"type": "object"}, lambda args: delete_event(args["event_uid"])),
+        ToolSpec("find_free_slot", "Find the first free calendar slot on a day.", 1, {"type": "object", "properties": {"date_iso": {"type": "string"}, "duration_minutes": {"type": "integer"}}, "required": ["date_iso"], "additionalProperties": False}, {"type": ["string", "null"]}, lambda args: find_free_slot(args["date_iso"], args.get("duration_minutes", 60))),
+        ToolSpec("update_event", "Update a calendar event.", 2, {"type": "object", "properties": {"event_uid": {"type": "string"}, "title": {"type": ["string", "null"]}, "start_iso": {"type": ["string", "null"]}, "end_iso": {"type": ["string", "null"]}, "description": {"type": ["string", "null"]}}, "required": ["event_uid"], "additionalProperties": False}, {"type": "object"}, lambda args: update_event(args["event_uid"], args.get("title"), args.get("start_iso"), args.get("end_iso"), args.get("description"))),
         ToolSpec("list_meetings", "List meetings in a date range.", 1, {"type": "object", "properties": {"date_range": {"type": "object"}}, "required": ["date_range"], "additionalProperties": False}, {"type": "array"}, lambda args: list_meetings(args["date_range"])),
         ToolSpec("create_meeting", "Create a meeting.", 2, {"type": "object", "properties": {"title": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "attendees": {"type": "array"}, "platform": {"type": "string"}, "description": {"type": "string"}}, "required": ["title", "start", "end", "attendees", "platform"], "additionalProperties": False}, {"type": "object"}, lambda args: create_meeting(args["title"], args["start"], args["end"], args["attendees"], args["platform"], args.get("description", ""))),
         ToolSpec("update_meeting", "Update a meeting.", 2, {"type": "object", "properties": {"event_id": {"type": "string"}, "changes": {"type": "object"}}, "required": ["event_id", "changes"], "additionalProperties": False}, {"type": "object"}, lambda args: update_meeting(args["event_id"], args["changes"])),

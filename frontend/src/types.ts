@@ -1,48 +1,24 @@
+export type AuraRole = 'user' | 'assistant';
+
+export interface AuraToolSummary {
+  tool: string;
+  summary: string;
+}
+
 export interface AuraMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: AuraRole;
   content: string;
   createdAt: string;
-  details?: Record<string, unknown>;
+  isStreaming?: boolean;
+  isThinking?: boolean;
+  tools?: AuraToolSummary[];
 }
 
-export interface AuraMessageResponse {
-  response: string;
-  used_ensemble?: boolean;
-  reasoning_used?: boolean;
-  tools_called?: string[];
-}
-
-export interface AuraWorkflowStep {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
-  tool_name: string;
-  requires_approval?: boolean;
-  retry_count?: number;
-  max_retries?: number;
-  error?: string | null;
-}
-
-export interface AuraWorkflowPlan {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  steps: AuraWorkflowStep[];
-  context?: Record<string, unknown>;
-}
-
-export interface AuraMemoryRecord {
-  id: string;
-  key: string;
-  category: string;
-  preview: string;
-  timestamp: string;
-  similarity_score?: number;
+export interface AuraAuthResponse {
+  user_id: string;
+  token?: string;
+  jwt_token?: string;
 }
 
 export interface AuraAgentCard {
@@ -50,56 +26,41 @@ export interface AuraAgentCard {
   name: string;
   description: string;
   capabilities?: string[];
-  status?: string;
+  status?: 'ready' | 'idle' | 'error' | string;
 }
 
-export interface AuraPhantomTask {
+export interface AuraToolFeedEntry {
   id: string;
-  name: string;
-  description: string;
-  schedule: string;
-  enabled: boolean;
-  next_run?: string | null;
-  last_run?: string | null;
-}
-
-export interface AuraSystemHealth {
-  cpu_pct: number;
-  ram_pct: number;
-  disk_pct: number;
-  uptime: number;
-}
-
-export interface AuraLyraStatus {
-  enabled: boolean;
-  listening: boolean;
-  voice_mode: boolean;
-  wake_engine: string;
-}
-
-export interface AuraSnapshot {
-  active_workflows: AuraWorkflowPlan[];
-  phantom_tasks: AuraPhantomTask[];
-  recent_memories: AuraMemoryRecord[];
-  lyra_status: AuraLyraStatus;
-  system_health: AuraSystemHealth;
-}
-
-export interface AuraEventRecord {
-  id: string;
-  type: string;
-  summary: string;
+  icon: string;
+  agent: string;
+  action: string;
   timestamp: string;
 }
 
-export interface AuraWebSocketMessage {
-  type: string;
-  data: unknown;
-  timestamp: string;
+export interface AuraHealthState {
+  router: { ok: boolean; model?: string };
+  memory: { ok: boolean };
+  local_pc: { ok: boolean };
+  status: string;
 }
 
-export interface AuraAuthResponse {
-  user_id: string;
+export interface AuraStateSnapshot {
+  active_workflows: Array<{ id: string }>;
+  recent_memories: Array<{ id: string }>;
+  phantom_tasks: Array<{ id: string }>;
+  system_health?: {
+    cpu_pct: number;
+    ram_pct: number;
+    disk_pct: number;
+    uptime: number;
+  };
+}
+
+export interface AuraMessageStreamEvent {
   token?: string;
-  jwt_token?: string;
+  done?: boolean;
+  tools_called?: string[];
+  steps?: Array<{ tool?: string; result?: unknown; error?: string }>;
+  reasoning_used?: boolean;
+  used_ensemble?: boolean;
 }

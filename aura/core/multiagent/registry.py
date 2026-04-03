@@ -29,6 +29,8 @@ class AgentRegistry:
             AgentCard("lyra", "LYRA", "Speech and voice agent", ["speech_to_text", "text_to_speech", "wake_word", "voice_command"], f"{base}/lyra/tasks", {"type": "object"}, {"type": "object"}, "1.0"),
             AgentCard("stream", "STREAM", "Source watching agent", ["arxiv_watch", "github_watch", "rss_fetch", "daily_digest"], f"{base}/stream/tasks", {"type": "object"}, {"type": "object"}, "1.0"),
             AgentCard("mosaic", "MOSAIC", "Synthesis and merging agent", ["multi_source_synthesis", "code_merge", "source_diff", "citation"], f"{base}/mosaic/tasks", {"type": "object"}, {"type": "object"}, "1.0"),
+            AgentCard("mobile", "MOBILE", "Mobile companion agent", ["push_notifications", "remote_command", "handoff", "presence_sync"], f"{base}/mobile/tasks", {"type": "object"}, {"type": "object"}, "1.0"),
+            AgentCard("nexus", "NEXUS", "Command center and UI agent", ["session_state", "ui_telemetry", "system_health", "chat_orchestration"], f"{base}/nexus/tasks", {"type": "object"}, {"type": "object"}, "1.0"),
         ]
         for card in agents:
             self.register(card)

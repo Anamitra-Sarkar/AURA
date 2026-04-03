@@ -158,6 +158,7 @@ class ReActAgentLoop:
                 "used_ensemble": result.ensemble_used,
                 "tools_called": result.tools_called,
                 "reasoning_used": result.reasoning_used,
+                "steps": getattr(result, "steps", []),
             }
         result = await self.run(user_message, importance=importance)
         return {
@@ -165,6 +166,7 @@ class ReActAgentLoop:
             "used_ensemble": result.used_ensemble,
             "tools_called": result.tools_called,
             "reasoning_used": result.reasoning_used,
+            "steps": result.steps,
         }
 
     @staticmethod
