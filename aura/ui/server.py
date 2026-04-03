@@ -129,10 +129,24 @@ class NexusRuntime:
 def _default_runtime() -> NexusRuntime:
     config = load_config()
     event_bus = EventBus()
+    # ---------------------------------------------------------------------------
+    # AuthManager is always initialised so login/register work out of the box.
+    # The JWT secret comes from the AURA_JWT_SECRET env var (set this in HF
+    # Secrets / Vercel env). Falls back to a random secret per-process which
+    # means tokens are invalidated on every restart — fine for dev, set the
+    # env var in production so tokens survive restarts.
+    # ---------------------------------------------------------------------------
+    auth_secret = getattr(getattr(config, "auth", None), "secret_key", None)
+    auth_manager = AuthManager(config.paths.data_dir, secret=auth_secret)
     return NexusRuntime(
         config=config,
         event_bus=event_bus,
-        agent_loop=ReActAgentLoop(router=OllamaRouter(model=config.primary_model.name, host=config.primary_model.host), registry=get_tool_registry(), event_bus=event_bus),
+        agent_loop=ReActAgentLoop(
+            router=OllamaRouter(model=config.primary_model.name, host=config.primary_model.host),
+            registry=get_tool_registry(),
+            event_bus=event_bus,
+        ),
+        auth_manager=auth_manager,
     )
 
 
@@ -412,10 +426,15 @@ async def health() -> dict[str, Any]:
 async def auth_register(payload: dict[str, str]) -> dict[str, Any]:
     manager = _auth_manager()
     if manager is None:
-        raise HTTPException(status_code=400, detail="authentication disabled")
+        raise HTTPException(status_code=503, detail="authentication unavailable")
     if not payload.get("username") or not payload.get("password"):
-        raise HTTPException(status_code=400, detail="username and password required")
-    return manager.register(payload["username"], payload["password"])
+        raise HTTPException(status_code=422, detail="username and password required")
+    try:
+        return manager.register(payload["username"], payload["password"])
+    except AuthError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/auth/register")
@@ -427,10 +446,15 @@ async def api_auth_register(payload: dict[str, str]) -> dict[str, Any]:
 async def auth_login(payload: dict[str, str]) -> dict[str, Any]:
     manager = _auth_manager()
     if manager is None:
-        raise HTTPException(status_code=400, detail="authentication disabled")
+        raise HTTPException(status_code=503, detail="authentication unavailable")
     if not payload.get("username") or not payload.get("password"):
-        raise HTTPException(status_code=400, detail="username and password required")
-    return manager.login(payload["username"], payload["password"])
+        raise HTTPException(status_code=422, detail="username and password required")
+    try:
+        return manager.login(payload["username"], payload["password"])
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/auth/login")
@@ -442,7 +466,7 @@ async def api_auth_login(payload: dict[str, str]) -> dict[str, Any]:
 async def auth_me(request: Request) -> dict[str, Any]:
     manager = _auth_manager()
     if manager is None:
-        raise HTTPException(status_code=400, detail="authentication disabled")
+        raise HTTPException(status_code=503, detail="authentication unavailable")
     user_id = _require_token(request)
     return {"user_id": user_id}
 
