@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, AsyncIterator
 
 from ..router.smart_router import SmartRouter
 from ..router.task_classifier import TaskClassifier
@@ -29,9 +30,24 @@ class NexusOrchestrator:
         self.registry = registry or AgentRegistry()
         self.classifier = TaskClassifier()
 
-    async def handle(self, message: str, user_id: str, context: dict[str, Any], importance: int = 2) -> OrchestratorResult:
+    async def handle(self, message: str, user_id: str, context: dict[str, Any], importance: int = 2, stream: bool = False) -> OrchestratorResult | AsyncIterator[dict[str, Any]]:
         from aura import memory as memory_module
 
+        if stream:
+            async def _stream() -> AsyncIterator[dict[str, Any]]:
+                result = await self.handle(message, user_id, context, importance, stream=False)
+                yield {"token": "", "done": False}
+                for chunk in self._chunk_text(result.response):
+                    yield {"token": chunk, "done": False}
+                yield {
+                    "token": "",
+                    "done": True,
+                    "tools_called": result.tools_called,
+                    "reasoning_used": result.reasoning_used,
+                    "used_ensemble": result.ensemble_used,
+                }
+
+            return _stream()
         if callable(getattr(memory_module, "inject_context", None)):
             await asyncio.to_thread(memory_module.inject_context, f"{user_id}:{message}")
         lowered = message.lower()
@@ -57,6 +73,12 @@ class NexusOrchestrator:
 
                 get_logger(__name__, component="nexus").debug("memory-extraction-failed", extra={"user_id": user_id}, exc_info=True)
         return result
+
+    @staticmethod
+    def _chunk_text(text: str) -> list[str]:
+        if not text:
+            return []
+        return re.findall(r"\S+\s*", text)
 
     def _select_agent(self, message: str) -> str:
         decision = self.classifier.classify(message)

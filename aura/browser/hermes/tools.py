@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import shutil
 import urllib.parse
@@ -27,6 +28,14 @@ CONFIG: AppConfig = load_config()
 _EVENT_BUS: EventBus = EventBus()
 _PAGES: dict[str, dict[str, Any]] = {}
 _BLOCKLIST: set[str] = set()
+
+
+def _browser_args() -> list[str]:
+    """Return Chromium arguments appropriate for the current environment."""
+
+    if os.environ.get("HF_SPACE") or not os.environ.get("DISPLAY"):
+        return ["--no-sandbox", "--disable-dev-shm-usage", "--headless=new", "--disable-gpu"]
+    return []
 
 
 class HermesError(Exception):

@@ -12,9 +12,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import chromadb
+from chromadb.config import Settings
+
 from aura.core.config import AppConfig, load_config
 from aura.core.logging import get_logger
-from aura.core.tools import ToolSpec, get_tool_registry
+from aura.core.tools import GLOBAL_TOOL_REGISTRY, ToolSpec
 
 from .models import ALLOWED_CATEGORIES, ConsolidationReport, MemoryRecord, RecallResult
 
@@ -23,6 +26,8 @@ CONFIG: AppConfig = load_config()
 _ROUTER: Any | None = None
 _EMBED_MODEL: Any | None = None
 _EMBED_DIM = 128
+_CHROMA_CLIENT: chromadb.PersistentClient | None = None
+_CHROMA_COLLECTION: Any | None = None
 _READY = False
 
 
@@ -33,9 +38,11 @@ class MnemeError(Exception):
 def set_config(config: AppConfig) -> None:
     """Override the runtime configuration used by MNEME."""
 
-    global CONFIG, _READY
+    global CONFIG, _READY, _CHROMA_CLIENT, _CHROMA_COLLECTION
     CONFIG = config
     _READY = False
+    _CHROMA_CLIENT = None
+    _CHROMA_COLLECTION = None
 
 
 def set_router(router: Any | None) -> None:
@@ -91,6 +98,37 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def _chroma_dir() -> Path:
+    return CONFIG.paths.data_dir / "chroma"
+
+
+def _get_embed_model() -> Any:
+    """Return the local sentence-transformers embedder."""
+
+    global _EMBED_MODEL
+    if _EMBED_MODEL is None:
+        from sentence_transformers import SentenceTransformer  # type: ignore
+
+        _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _EMBED_MODEL
+
+
+def _ensure_chroma_collection() -> Any:
+    """Create the persistent Chroma collection lazily."""
+
+    global _CHROMA_CLIENT, _CHROMA_COLLECTION
+    if _CHROMA_COLLECTION is not None:
+        return _CHROMA_COLLECTION
+    _chroma_dir().mkdir(parents=True, exist_ok=True)
+    if _CHROMA_CLIENT is None:
+        _CHROMA_CLIENT = chromadb.PersistentClient(path=str(_chroma_dir()), settings=Settings(anonymized_telemetry=False))
+    _CHROMA_COLLECTION = _CHROMA_CLIENT.get_or_create_collection(
+        name="aura_memories",
+        metadata={"hnsw:space": "cosine"},
+    )
+    return _CHROMA_COLLECTION
+
+
 def _now() -> str:
     """Return the current UTC timestamp."""
 
@@ -117,13 +155,8 @@ def _normalize_tags(tags: list[str] | None) -> list[str]:
 def _embed_text(text: str) -> list[float]:
     """Generate an offline embedding vector."""
 
-    global _EMBED_MODEL
     try:
-        if _EMBED_MODEL is None:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-
-            _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-        vector = _EMBED_MODEL.encode([text], normalize_embeddings=True)[0]
+        vector = _get_embed_model().encode([text], normalize_embeddings=True)[0]
         return [float(value) for value in vector]
     except Exception:
         vector = [0.0] * _EMBED_DIM
@@ -163,18 +196,108 @@ def _row_to_record(row: sqlite3.Row) -> MemoryRecord:
     )
 
 
+def _record_to_metadata(record: MemoryRecord) -> dict[str, Any]:
+    return {
+        "key": record.key,
+        "value": record.value,
+        "category": record.category,
+        "tags": json.dumps(record.tags),
+        "source": record.source,
+        "confidence": float(record.confidence),
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+        "access_count": int(record.access_count),
+        "last_accessed": record.last_accessed,
+    }
+
+
+def _metadata_to_record(memory_id: str, metadata: dict[str, Any] | None, document: str | None = None, embedding: list[float] | None = None) -> MemoryRecord:
+    data = metadata or {}
+    key = str(data.get("key", memory_id))
+    value = str(data.get("value", document or ""))
+    tags_raw = data.get("tags", "[]")
+    tags: list[str]
+    try:
+        tags_data = json.loads(tags_raw) if isinstance(tags_raw, str) else tags_raw
+        tags = [str(tag) for tag in tags_data] if isinstance(tags_data, list) else []
+    except Exception:
+        tags = []
+    record_embedding = embedding if embedding is not None else _embed_text(f"{key}\n{value}")
+    return MemoryRecord(
+        id=memory_id,
+        key=key,
+        value=value,
+        category=str(data.get("category", "general")),
+        tags=tags,
+        embedding=record_embedding,
+        source=str(data.get("source", "manual")),
+        confidence=float(data.get("confidence", 1.0)),
+        created_at=str(data.get("created_at", _now())),
+        updated_at=str(data.get("updated_at", _now())),
+        access_count=int(data.get("access_count", 0)),
+        last_accessed=str(data.get("last_accessed", _now())),
+    )
+
+
+def _upsert_chroma(record: MemoryRecord) -> None:
+    collection = _ensure_chroma_collection()
+    collection.upsert(
+        ids=[record.id],
+        documents=[f"{record.key}\n{record.value}"],
+        embeddings=[record.embedding],
+        metadatas=[_record_to_metadata(record)],
+    )
+
+
+def _fetch_chroma(memory_id: str) -> MemoryRecord | None:
+    collection = _ensure_chroma_collection()
+    result = collection.get(ids=[memory_id], include=["metadatas", "documents", "embeddings"])
+    ids = result.get("ids")
+    if ids is None:
+        ids = []
+    if len(ids) == 0:
+        return None
+    metadatas = result.get("metadatas")
+    documents = result.get("documents")
+    embeddings = result.get("embeddings")
+    metadata = metadatas[0] if metadatas is not None and len(metadatas) > 0 else None
+    document = documents[0] if documents is not None and len(documents) > 0 else None
+    embedding = embeddings[0] if embeddings is not None and len(embeddings) > 0 else None
+    embedding_list = [float(value) for value in embedding] if embedding is not None else None
+    return _metadata_to_record(str(ids[0]), metadata if isinstance(metadata, dict) else None, str(document) if document is not None else None, embedding_list)
+
+
 def _fetch_by_id(memory_id: str) -> MemoryRecord:
     with _connect() as connection:
         row = connection.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
-    if row is None:
+    if row is not None:
+        return _row_to_record(row)
+    chroma_record = _fetch_chroma(memory_id)
+    if chroma_record is None:
         raise MnemeError(f"memory not found: {memory_id}")
-    return _row_to_record(row)
+    return chroma_record
 
 
 def _fetch_by_key(key: str) -> MemoryRecord | None:
     with _connect() as connection:
         row = connection.execute("SELECT * FROM memories WHERE key = ?", (key,)).fetchone()
-    return _row_to_record(row) if row is not None else None
+    if row is not None:
+        return _row_to_record(row)
+    collection = _ensure_chroma_collection()
+    result = collection.get(where={"key": key}, include=["metadatas", "documents", "embeddings"])
+    ids = result.get("ids")
+    if ids is None:
+        ids = []
+    if len(ids) == 0:
+        return None
+    metadatas = result.get("metadatas")
+    documents = result.get("documents")
+    embeddings = result.get("embeddings")
+    metadata = metadatas[0] if metadatas is not None and len(metadatas) > 0 else None
+    document = documents[0] if documents is not None and len(documents) > 0 else None
+    embedding = embeddings[0] if embeddings is not None and len(embeddings) > 0 else None
+    embedding_list = [float(value) for value in embedding] if embedding is not None else None
+    return _metadata_to_record(str(ids[0]), metadata if isinstance(metadata, dict) else None, str(document) if document is not None else None, embedding_list)
 
 
 def _upsert(record: MemoryRecord) -> MemoryRecord:
@@ -201,6 +324,7 @@ def _upsert(record: MemoryRecord) -> MemoryRecord:
             ),
         )
         connection.commit()
+    _upsert_chroma(record)
     return record
 
 
@@ -261,13 +385,44 @@ def recall_memory(query: str, top_k: int = 5, category_filter: str | None = None
     if category_filter is not None:
         _validate_category(category_filter)
     query_embedding = _embed_text(query)
+    collection = _ensure_chroma_collection()
+    query_kwargs: dict[str, Any] = {
+        "query_embeddings": [query_embedding],
+        "n_results": top_k,
+        "include": ["metadatas", "documents", "distances"],
+    }
+    if category_filter is not None:
+        query_kwargs["where"] = {"category": category_filter}
+    query_result = collection.query(**query_kwargs)
     scored: list[tuple[float, MemoryRecord]] = []
-    for record in _all_records():
-        if category_filter and record.category != category_filter:
+    ids_rows = query_result.get("ids")
+    metadatas_rows = query_result.get("metadatas")
+    documents_rows = query_result.get("documents")
+    distances_rows = query_result.get("distances")
+    if ids_rows is None:
+        ids_rows = [[]]
+    if metadatas_rows is None:
+        metadatas_rows = [[]]
+    if documents_rows is None:
+        documents_rows = [[]]
+    if distances_rows is None:
+        distances_rows = [[]]
+    ids = ids_rows[0]
+    metadatas = metadatas_rows[0]
+    documents = documents_rows[0]
+    distances = distances_rows[0]
+    for index, memory_id in enumerate(ids):
+        distance = float(distances[index]) if index < len(distances) and distances[index] is not None else 1.0
+        similarity = max(0.0, 1.0 - distance)
+        if similarity < min_score:
             continue
-        score = _cosine(query_embedding, record.embedding)
-        if score >= min_score:
-            scored.append((score, record))
+        metadata = metadatas[index] if index < len(metadatas) and isinstance(metadatas[index], dict) else None
+        document = documents[index] if index < len(documents) else None
+        try:
+            record = _fetch_by_id(str(memory_id))
+        except MnemeError:
+            record = _metadata_to_record(str(memory_id), metadata, str(document) if document is not None else None)
+        scored.append((similarity, record))
     scored.sort(key=lambda item: item[0], reverse=True)
     results: list[RecallResult] = []
     for rank, (score, record) in enumerate(scored[:top_k], start=1):
@@ -315,9 +470,13 @@ def delete_memory(id: str) -> dict[str, Any]:
     with _connect() as connection:
         row = connection.execute("SELECT 1 FROM memories WHERE id = ?", (id,)).fetchone()
         if row is None:
-            return {"success": False, "message": f"memory not found: {id}", "data": {"id": id}}
+            chroma_record = _fetch_chroma(id)
+            if chroma_record is None:
+                return {"success": False, "message": f"memory not found: {id}", "data": {"id": id}}
         connection.execute("DELETE FROM memories WHERE id = ?", (id,))
         connection.commit()
+    collection = _ensure_chroma_collection()
+    collection.delete(ids=[id])
     return {"success": True, "message": "memory deleted", "data": {"id": id}}
 
 
@@ -325,23 +484,38 @@ def list_memories(category: str | None = None, tag_filter: str | None = None, li
     """List memories from SQLite."""
 
     _ensure_ready()
-    sql = "SELECT * FROM memories"
-    params: list[Any] = []
-    clauses: list[str] = []
+    collection = _ensure_chroma_collection()
+    query_kwargs: dict[str, Any] = {"limit": limit, "include": ["metadatas", "documents", "embeddings"]}
     if category is not None:
         _validate_category(category)
-        clauses.append("category = ?")
-        params.append(category)
+        query_kwargs["where"] = {"category": category}
+    result = collection.get(**query_kwargs)
+    ids = result.get("ids")
+    metadatas = result.get("metadatas")
+    documents = result.get("documents")
+    embeddings = result.get("embeddings")
+    if ids is None:
+        ids = []
+    if metadatas is None:
+        metadatas = []
+    if documents is None:
+        documents = []
+    if embeddings is None:
+        embeddings = []
+    memories: list[MemoryRecord] = []
+    for index, memory_id in enumerate(ids):
+        metadata = metadatas[index] if index < len(metadatas) and isinstance(metadatas[index], dict) else None
+        document = documents[index] if index < len(documents) else None
+        embedding = embeddings[index] if index < len(embeddings) else None
+        embedding_list = [float(value) for value in embedding] if embedding is not None else None
+        try:
+            record = _fetch_by_id(str(memory_id))
+        except MnemeError:
+            record = _metadata_to_record(str(memory_id), metadata, str(document) if document is not None else None, embedding_list)
+        memories.append(record)
     if tag_filter is not None:
-        clauses.append("tags LIKE ?")
-        params.append(f"%{tag_filter}%")
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY last_accessed DESC LIMIT ?"
-    params.append(limit)
-    with _connect() as connection:
-        rows = connection.execute(sql, params).fetchall()
-    return [_row_to_record(row) for row in rows]
+        memories = [record for record in memories if tag_filter in record.tags or tag_filter in record.value or tag_filter in record.key]
+    return memories[:limit]
 
 
 def consolidate_memory() -> ConsolidationReport:
@@ -462,7 +636,7 @@ def get_memory_tools() -> list[ToolSpec]:
 def register_memory_tools() -> None:
     """Register MNEME tools in the global registry."""
 
-    registry = get_tool_registry()
+    registry = GLOBAL_TOOL_REGISTRY
     for spec in get_memory_tools():
         try:
             registry.register(spec)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import signal
 import sys
 from contextlib import suppress
@@ -162,9 +163,10 @@ async def bootstrap(config_path: str | Path | None = None) -> DaemonState:
     register_mosaic_tools()
     resume_interrupted_workflows()
     set_ui_runtime(config, event_bus, agent_loop, orchestrator=orchestrator)
+    hf_space = bool(os.environ.get("HF_SPACE"))
     ipc_server = UnixSocketServer(config.paths.ipc_socket) if config.features.ipc else None
-    hotkey = GlobalHotkeyManager() if config.features.hotkey else None
-    tray = TrayController() if config.features.tray else None
+    hotkey = GlobalHotkeyManager() if config.features.hotkey and not hf_space else None
+    tray = TrayController() if config.features.tray and not hf_space else None
     return DaemonState(
         config=config,
         event_bus=event_bus,
@@ -205,7 +207,7 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         logger.info("active-provider-status", extra={"providers": provider_status})
     else:
         logger.info("active-router", extra={"router": type(router).__name__ if router is not None else "none"})
-    phantom_task = asyncio.create_task(phantom_loop())
+    phantom_task = asyncio.create_task(phantom_loop()) if not os.environ.get("HF_SPACE") else None
     ui_task: asyncio.Task[None] | None = None
     config = getattr(state, "config", None)
     ui_config = getattr(config, "ui", None) if config is not None else None
@@ -214,7 +216,7 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         state.ui_task = ui_task
     lyra_token: str | None = None
     lyra_config = getattr(config, "lyra", None) if config is not None else None
-    if lyra_config is not None and lyra_config.enabled:
+    if lyra_config is not None and lyra_config.enabled and not os.environ.get("HF_SPACE"):
         async def on_wake_word(_topic: str, payload: Any) -> None:
             transcription = payload.get("transcription", {}) if isinstance(payload, dict) else {}
             text = str(transcription.get("text", ""))
@@ -242,9 +244,10 @@ async def run_forever(config_path: str | Path | None = None) -> None:
     except asyncio.CancelledError:
         logger.debug("daemon-cancelled")
     finally:
-        phantom_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await phantom_task
+        if phantom_task is not None:
+            phantom_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await phantom_task
         ui_task = getattr(state, "ui_task", None)
         if ui_task is not None:
             ui_task.cancel()

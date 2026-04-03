@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, AsyncIterator
 
 from .event_bus import EventBus
 from .config import load_config
@@ -101,9 +102,29 @@ class ReActAgentLoop:
                 asyncio.create_task(self._extract_memories(user_message, model_result.content))
         return AgentLoopResult(ok=False, error="max-steps-exceeded", steps=steps, tools_called=[step["tool"] for step in steps], reasoning_used=self._reasoning_used(steps))
 
-    async def handle_message(self, user_message: str, importance: int | None = None) -> dict[str, Any]:
+    async def handle_message(self, user_message: str, importance: int | None = None, stream: bool = False) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
         """Compatibility wrapper returning a UI-friendly result."""
 
+        if stream:
+            async def _stream() -> AsyncIterator[dict[str, Any]]:
+                if self.orchestrator is not None:
+                    result = await self.orchestrator.handle(user_message, "local", {}, importance or 2, stream=True)
+                    async for event in result:
+                        yield event
+                    return
+                result = await self.run(user_message, importance=importance)
+                yield {"token": "", "done": False}
+                for chunk in self._chunk_text(result.answer or result.error or ""):
+                    yield {"token": chunk, "done": False}
+                yield {
+                    "token": "",
+                    "done": True,
+                    "tools_called": result.tools_called,
+                    "reasoning_used": result.reasoning_used,
+                    "used_ensemble": result.used_ensemble,
+                }
+
+            return _stream()
         if self.orchestrator is not None:
             result = await self.orchestrator.handle(user_message, "local", {}, importance or 2)
             return {
@@ -119,6 +140,12 @@ class ReActAgentLoop:
             "tools_called": result.tools_called,
             "reasoning_used": result.reasoning_used,
         }
+
+    @staticmethod
+    def _chunk_text(text: str) -> list[str]:
+        if not text:
+            return []
+        return re.findall(r"\S+\s*", text)
 
     async def _model_call(self, messages: list[dict[str, Any]], user_message: str, importance: int | None = None) -> _ModelTurn:
         importance = importance if importance is not None else self._importance_level(user_message)

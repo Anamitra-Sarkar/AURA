@@ -12,8 +12,6 @@ import type {
   AuraWorkflowPlan,
 } from '../types';
 
-const STORAGE_KEY = 'aura.authToken';
-
 function now(): string {
   return new Date().toISOString();
 }
@@ -54,7 +52,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export function useAuraClient() {
-  const [token, setTokenState] = useState(() => localStorage.getItem(STORAGE_KEY) ?? '');
+  const [token, setTokenState] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -83,14 +81,6 @@ export function useAuraClient() {
 
   const isAuthenticated = token.trim().length > 0;
   const needsAuth = !isAuthenticated;
-
-  useEffect(() => {
-    if (token.trim()) {
-      localStorage.setItem(STORAGE_KEY, token.trim());
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, [token]);
 
   const clearAuth = () => {
     setTokenState('');
@@ -239,7 +229,10 @@ export function useAuraClient() {
     try {
       const response = await fetch('/api/message', {
         method: 'POST',
-        headers: authHeaders,
+        headers: {
+          ...authHeaders,
+          Accept: 'text/event-stream',
+        },
         body: JSON.stringify({ text, importance }),
       });
       if (response.status === 401) {
@@ -248,6 +241,98 @@ export function useAuraClient() {
       }
       if (!response.ok) {
         throw new Error(`Message request failed (${response.status})`);
+      }
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        const reader = response.body?.getReader();
+        if (reader == null) {
+          throw new Error('Streaming response is unavailable');
+        }
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const assistantId = crypto.randomUUID();
+        setMessages((current) => {
+          const withoutPlaceholder = current.slice(0, -1);
+          return [...withoutPlaceholder, { ...createMessage('assistant', ''), id: assistantId }];
+        });
+
+        const appendToken = (token: string) => {
+          if (!token) {
+            return;
+          }
+          setMessages((current) => {
+            const next = [...current];
+            const index = next.findIndex((message) => message.id === assistantId);
+            if (index === -1) {
+              return current;
+            }
+            next[index] = {
+              ...next[index],
+              content: `${next[index].content}${token}`,
+            };
+            return next;
+          });
+        };
+
+        const finalizeMessage = (details: Record<string, unknown>) => {
+          setMessages((current) => {
+            const next = [...current];
+            const index = next.findIndex((message) => message.id === assistantId);
+            if (index === -1) {
+              return current;
+            }
+            next[index] = {
+              ...next[index],
+              details: {
+                ...(next[index].details || {}),
+                ...details,
+              },
+            };
+            return next;
+          });
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+          for (const event of events) {
+            const lines = event.split('\n');
+            const dataLine = lines.find((line) => line.startsWith('data:'));
+            if (!dataLine) {
+              continue;
+            }
+            const payloadText = dataLine.slice(5).trim();
+            if (!payloadText) {
+              continue;
+            }
+            const payload = JSON.parse(payloadText) as {
+              token?: string;
+              done?: boolean;
+              tools_called?: string[];
+              reasoning_used?: boolean;
+              used_ensemble?: boolean;
+            };
+            if (payload.token) {
+              appendToken(payload.token);
+            }
+            if (payload.done) {
+              finalizeMessage({
+                tools_called: payload.tools_called || [],
+                reasoning_used: Boolean(payload.reasoning_used),
+                used_ensemble: Boolean(payload.used_ensemble),
+              });
+              await refreshAll();
+              return;
+            }
+          }
+        }
+        await refreshAll();
+        return;
       }
       const data = (await readJson<AuraMessageResponse>(response)) as AuraMessageResponse;
       setMessages((current) => {

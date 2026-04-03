@@ -13,7 +13,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 import aura
@@ -125,6 +125,7 @@ if not INDEX_PATH.exists():
 _RUNTIME: NexusRuntime = _default_runtime()
 _CONNECTED_CLIENTS: set[WebSocket] = set()
 _CLIENT_CONNECTIONS: dict[str, WebSocket] = {}
+_CLIENT_TOOL_FUTURES: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _EVENT_BRIDGE_READY = False
 
 
@@ -280,6 +281,33 @@ async def _broadcast_event(topic: str, payload: Any) -> None:
         _CONNECTED_CLIENTS.discard(client)
 
 
+async def _send_client_message(user_id: str, payload: dict[str, Any]) -> None:
+    websocket = _CLIENT_CONNECTIONS.get(user_id)
+    if websocket is None:
+        raise ConnectionError("client not connected")
+    await websocket.send_json(payload)
+
+
+async def request_local_tool(user_id: str, tool: str, args: dict[str, Any], timeout_seconds: float = 120.0) -> dict[str, Any]:
+    call_id = secrets.token_hex(16)
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[dict[str, Any]] = loop.create_future()
+    _CLIENT_TOOL_FUTURES[call_id] = (user_id, future)
+    try:
+        await _send_client_message(
+            user_id,
+            {
+                "action": "tool_call",
+                "tool": tool,
+                "args": args,
+                "call_id": call_id,
+            },
+        )
+        return await asyncio.wait_for(future, timeout=timeout_seconds)
+    finally:
+        _CLIENT_TOOL_FUTURES.pop(call_id, None)
+
+
 async def _ensure_event_bridge() -> None:
     global _EVENT_BRIDGE_READY
     if _EVENT_BRIDGE_READY:
@@ -320,7 +348,9 @@ app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     runtime = get_runtime()
-    if request.url.path.startswith("/api/") and runtime.auth_manager is not None:
+    if runtime.auth_manager is not None and (
+        request.url.path.startswith("/api/") or request.url.path.startswith("/a2a/") or request.url.path.startswith("/mcp/")
+    ):
         _require_token(request)
     return await call_next(request)
 
@@ -375,20 +405,64 @@ async def api_state() -> dict[str, Any]:
     return build_state_snapshot()
 
 
-@app.post("/api/message")
-async def api_message(payload: MessageRequest, request: Request) -> dict[str, Any]:
+@app.post("/api/message", response_model=None)
+async def api_message(payload: MessageRequest, request: Request) -> StreamingResponse | dict[str, Any]:
     runtime = get_runtime()
     user_id = _require_token(request) or "local"
-    if runtime.orchestrator is not None:
-        result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+    accept = request.headers.get("accept", "")
+
+    def _result_value(result: Any, key: str, default: Any = None) -> Any:
+        if isinstance(result, dict):
+            return result.get(key, default)
+        return getattr(result, key, default)
+
+    async def _emit_result_events(result: Any):
+        yield f"data: {json.dumps({'token': '', 'done': False}, ensure_ascii=True)}\n\n"
+        response_text = str(_result_value(result, "response", "") or "")
+        for chunk in response_text.split():
+            yield f"data: {json.dumps({'token': chunk + ' ', 'done': False}, ensure_ascii=True)}\n\n"
+        yield f"data: {json.dumps({'token': '', 'done': True, 'tools_called': _result_value(result, 'tools_called', []), 'reasoning_used': bool(_result_value(result, 'reasoning_used', False)), 'used_ensemble': bool(_result_value(result, 'used_ensemble', False))}, ensure_ascii=True)}\n\n"
+
+    async def event_stream():
+        if runtime.orchestrator is not None:
+            try:
+                stream = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance, stream=True)
+            except TypeError:
+                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+                async for event in _emit_result_events(result):
+                    yield event
+                return
+        else:
+            try:
+                stream = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance, stream=True)
+            except TypeError:
+                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
+                async for event in _emit_result_events(result):
+                    yield event
+                return
+        yield f"data: {json.dumps({'token': '', 'done': False}, ensure_ascii=True)}\n\n"
+        async for event in stream:
+            yield f"data: {json.dumps(event, ensure_ascii=True)}\n\n"
+
+    if "text/event-stream" not in accept:
+        if runtime.orchestrator is not None:
+            try:
+                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+            except TypeError:
+                result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance, stream=False)
+        else:
+            try:
+                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
+            except TypeError:
+                result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance, stream=False)
         return {
-            "response": result.response,
-            "used_ensemble": result.ensemble_used,
-            "tools_called": result.tools_called,
-            "reasoning_used": result.reasoning_used,
+            "response": _result_value(result, "response", ""),
+            "used_ensemble": _result_value(result, "used_ensemble", False),
+            "tools_called": _result_value(result, "tools_called", []),
+            "reasoning_used": _result_value(result, "reasoning_used", False),
         }
-    result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
-    return result
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/a2a/agents")
@@ -626,11 +700,39 @@ async def websocket_client(websocket: WebSocket, user_id: str) -> None:
     await websocket.send_json({"type": "hello", "platform": "linux", "capabilities": ["atlas", "aegis", "hermes", "lyra"], "aura_version": aura.__version__})
     try:
         while True:
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            try:
+                payload = json.loads(message)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("action") != "tool_result":
+                continue
+            call_id = str(payload.get("call_id", ""))
+            if not call_id:
+                continue
+            entry = _CLIENT_TOOL_FUTURES.get(call_id)
+            if entry is None:
+                continue
+            future_user_id, future = entry
+            if future_user_id != user_id or future.done():
+                continue
+            error = payload.get("error")
+            if error:
+                future.set_result({"result": payload.get("result"), "error": str(error)})
+            else:
+                future.set_result({"result": payload.get("result"), "error": None})
     except WebSocketDisconnect:
         return
     finally:
         _CLIENT_CONNECTIONS.pop(user_id, None)
+        for call_id, (future_user_id, future) in list(_CLIENT_TOOL_FUTURES.items()):
+            if future_user_id != user_id:
+                continue
+            if not future.done():
+                future.set_exception(ConnectionError("local client disconnected"))
+            _CLIENT_TOOL_FUTURES.pop(call_id, None)
 
 
 @app.websocket("/ws/events")
