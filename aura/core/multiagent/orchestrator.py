@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..router.smart_router import SmartRouter
+from ..router.task_classifier import TaskClassifier
 from .dispatcher import A2ADispatcher
 from .models import A2ATask, OrchestratorResult
 from .registry import AgentRegistry
@@ -26,6 +27,7 @@ class NexusOrchestrator:
         self.smart_router = smart_router
         self.dispatcher = dispatcher or A2ADispatcher(registry or AgentRegistry())
         self.registry = registry or AgentRegistry()
+        self.classifier = TaskClassifier()
 
     async def handle(self, message: str, user_id: str, context: dict[str, Any], importance: int = 2) -> OrchestratorResult:
         from aura import memory as memory_module
@@ -55,20 +57,26 @@ class NexusOrchestrator:
         return result
 
     def _select_agent(self, message: str) -> str:
-        if "complex" in message or ("research" in message and ("write" in message or "save" in message)):
-            return "director"
-        if any(phrase in message for phrase in ["find file", "open", "read"]):
-            return "atlas"
-        if any(phrase in message for phrase in ["search", "research", "find info"]):
-            return "iris"
-        if any(phrase in message for phrase in ["code", "script", "implement"]):
+        decision = self.classifier.classify(message)
+        tags = set(decision.task_tags)
+        if "coding" in tags:
             return "logos"
-        if any(phrase in message for phrase in ["schedule", "remind", "meeting"]):
-            return "echo"
-        if any(phrase in message for phrase in ["browse", "open website", "fill"]):
-            return "hermes"
-        if any(phrase in message for phrase in ["analyze", "reason", "decide"]):
+        if "reasoning" in tags:
             return "oracle_deep"
-        if any(phrase in message for phrase in ["create", "write", "generate"]):
+        if "rag" in tags:
+            return "iris"
+        if "file_ops" in tags:
+            return "atlas"
+        if "calendar" in tags:
+            return "echo"
+        if "browser" in tags:
+            return "hermes"
+        if "synthesis" in tags:
+            return "mosaic"
+        if "workflow" in tags:
+            return "director"
+        if "long_context" in tags:
+            return "director"
+        if "multilingual" in tags:
             return "mosaic"
         return "general"

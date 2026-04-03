@@ -38,6 +38,29 @@ from aura.core.multiagent.registry import AgentRegistry
 from aura.memory import delete_memory, list_memories, recall_memory
 
 LOGGER = get_logger(__name__, component="nexus")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+INDEX_PATH = STATIC_DIR / "index.html"
+PLACEHOLDER_INDEX = """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AURA</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+      a { color: #2dd4bf; }
+      .card { max-width: 42rem; padding: 1.5rem; border: 1px solid #334155; background: #111827; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>AURA is running</h1>
+      <p>The frontend bundle is not present yet, so this fallback page is shown.</p>
+      <p><a href="/health">Health</a> · <a href="/docs">API docs</a></p>
+    </div>
+  </body>
+</html>
+"""
 EVENT_TYPES = {
     "director.event",
     "lyra.wake_word_detected",
@@ -92,6 +115,11 @@ def _default_runtime() -> NexusRuntime:
         event_bus=event_bus,
         agent_loop=ReActAgentLoop(router=OllamaRouter(model=config.primary_model.name, host=config.primary_model.host), registry=get_tool_registry(), event_bus=event_bus),
     )
+
+
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+if not INDEX_PATH.exists():
+    INDEX_PATH.write_text(PLACEHOLDER_INDEX, encoding="utf-8")
 
 
 _RUNTIME: NexusRuntime = _default_runtime()
@@ -301,8 +329,9 @@ async def auth_middleware(request: Request, call_next):
 async def index() -> HTMLResponse:
     """Serve the single-file frontend."""
 
-    index_path = Path(__file__).resolve().parent / "static" / "index.html"
-    return HTMLResponse(index_path.read_text(encoding="utf-8"))
+    if INDEX_PATH.exists():
+        return HTMLResponse(INDEX_PATH.read_text(encoding="utf-8"))
+    return HTMLResponse(PLACEHOLDER_INDEX)
 
 
 @app.get("/health")

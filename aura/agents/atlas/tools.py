@@ -453,7 +453,11 @@ def watch_folder(path: str, callback_event: str) -> WatchHandle:
     resolved = _validate_allowed(Path(path))
     watch_id = str(uuid.uuid4())
     global _WATCH_LOOP
-    _WATCH_LOOP = asyncio.get_running_loop()
+    try:
+        _WATCH_LOOP = asyncio.get_running_loop()
+    except RuntimeError:
+        _WATCH_LOOP = asyncio.new_event_loop()
+        asyncio.set_event_loop(_WATCH_LOOP)
 
     class _Handler(FileSystemEventHandler):  # type: ignore[misc]
         def _publish(self, payload: dict[str, Any]) -> None:

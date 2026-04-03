@@ -1,119 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA Nexus</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <style>
-    :root{
-      --bg:#0f0f0f; --surface:#1a1a1a; --surface-2:#242424; --border:#2e2e2e;
-      --text:#e8e8e8; --muted:#888; --accent:#00b4a6; --success:#22c55e; --warn:#f59e0b; --error:#ef4444;
-    }
-    *{box-sizing:border-box} body{margin:0;font-family:Inter,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
-    .layout{display:grid;grid-template-columns:240px 1fr 300px;height:100vh}
-    .sidebar,.rightbar,.panel,.card,.modal{background:var(--surface)}
-    .sidebar,.rightbar{border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px;gap:16px}
-    .rightbar{border-right:none;border-left:1px solid var(--border)}
-    .logo{font-weight:800;font-size:22px;color:var(--accent)}
-    .nav button,.toolbar button,.input-row button,.tab-btn,.pill{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:6px}
-    .nav{display:flex;flex-direction:column;gap:8px}.nav button{display:flex;align-items:center;gap:10px;padding:10px 12px;text-align:left;cursor:pointer}
-    .nav button.active{border-color:var(--accent);color:var(--accent)}
-    .status{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
-    .dot{width:10px;height:10px;border-radius:50%;background:var(--success);display:inline-block}
-    .voice-toggle{width:100%;padding:10px}
-    .main{display:flex;flex-direction:column;min-width:0}.topbar{padding:16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-    .panel-wrap{flex:1;overflow:auto;padding:16px}.panel{display:none;border:1px solid var(--border);border-radius:8px;padding:16px;min-height:calc(100vh - 110px)}
-    .panel.active{display:flex;flex-direction:column;gap:12px}
-    .chat-log,.events,.audit-log,.workflow-list,.memory-grid{display:grid;gap:10px}.chat-log,.events,.audit-log{overflow:auto}
-    .message{padding:10px 12px;border-radius:8px;max-width:80%;background:var(--surface-2)} .message.user{margin-left:auto;background:#083c38;border:1px solid #115e59}
-    .tool-badge,.status-badge,.event-badge,.category-badge{font-size:11px;padding:3px 8px;border-radius:999px;background:#2a2a2a;color:var(--muted)}
-    .input-row{display:flex;gap:8px;position:sticky;bottom:0;background:var(--surface);padding-top:12px}
-    .input-row textarea,.input-row input,.search{flex:1;padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:#111;color:var(--text)}
-    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card{border:1px solid var(--border);border-radius:8px;padding:12px}
-    .metric{height:8px;background:#222;border-radius:999px;overflow:hidden}.metric>div{height:100%;background:var(--accent)}
-    .rightbar.collapsed{width:52px;padding:16px 8px}.rightbar .live-title{display:flex;justify-content:space-between;align-items:center}
-    .feed-item{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#151515}.feed-item.error{border-color:var(--error)}
-    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);z-index:50}.modal .dialog{width:min(620px,90vw);padding:18px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.spacer{flex:1}
-    .hidden{display:none !important}
-  </style>
-</head>
-<body>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="logo">AURA</div>
-      <nav class="nav" id="nav"></nav>
-      <div class="status"><span><span class="dot"></span> Connected</span><button class="voice-toggle" id="voiceToggle"><i data-lucide="mic"></i> Voice</button></div>
-    </aside>
-    <main class="main">
-      <div class="topbar"><strong>NEXUS Control Panel</strong><span id="disconnected" class="hidden">Disconnected</span></div>
-      <div class="panel-wrap">
-        <section class="panel active" id="panel-chat"></section>
-        <section class="panel" id="panel-workflows"></section>
-        <section class="panel" id="panel-memory"></section>
-        <section class="panel" id="panel-feed"></section>
-        <section class="panel" id="panel-mosaic"></section>
-        <section class="panel" id="panel-reasoning"></section>
-        <section class="panel" id="panel-monitor"></section>
-        <section class="panel" id="panel-audit"></section>
-      </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AURA</title>
+  </head>
+  <body>
+    <main>
+      <h1>AURA is running</h1>
+      <p>The UI bundle will appear here once built.</p>
+      <p><a href="/health">Health</a> · <a href="/docs">Docs</a></p>
     </main>
-    <aside class="rightbar" id="rightbar">
-      <div class="live-title"><strong>LIVE FEED</strong><button id="collapseFeed">◀</button></div>
-      <div id="liveFeed" class="events"></div>
-    </aside>
-  </div>
-  <div class="modal" id="approvalModal"><div class="dialog"><h3>AURA is requesting elevated permission</h3><div id="approvalBody"></div><div class="row" style="margin-top:12px"><button id="denyApproval">Deny</button><div class="spacer"></div><button id="approveApproval" style="border-color:var(--error);color:var(--error)">Approve</button></div></div></div>
-  <script>
-    const panels = ['chat','workflows','memory','feed','mosaic','reasoning','monitor','audit'];
-    const nav = document.getElementById('nav');
-    const state = {snapshot:null, ws:null, reconnect:1000, events:[], voiceMode:false, pendingApproval:null};
-    const navMeta = [
-      ['chat','message-square','Chat'],['workflows','git-branch','Workflows'],['memory','brain','Memory'],
-      ['feed','rss','Feed'],['mosaic','layout-grid','Mosaic'],['reasoning','lightbulb','Reasoning'],['monitor','activity','Monitor'],['audit','shield','Audit Log'],
-    ];
-    navMeta.forEach(([id,icon,label])=>{const b=document.createElement('button');b.innerHTML=`<i data-lucide="${icon}"></i><span>${label}</span>${id==='feed'?'<span id="feedBadge" class="status-badge">0</span>':''}`;b.onclick=()=>switchPanel(id);b.dataset.panel=id;nav.appendChild(b);});
-    function switchPanel(id){panels.forEach(p=>document.getElementById(`panel-${p}`).classList.toggle('active',p===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.panel===id));}
-    function badge(text, cls=''){return `<span class="status-badge ${cls}">${text}</span>`;}
-    function renderChat(){document.getElementById('panel-chat').innerHTML=`<div class="chat-log" id="chatLog"></div><div class="input-row"><textarea id="msg" rows="3" placeholder="Type a command. Shift+Enter for newline."></textarea><select id="importance"><option>1</option><option selected>2</option><option>3</option><option>4</option></select><button id="send">Send</button></div>`;document.getElementById('send').onclick=sendMessage;}
-    function renderWorkflows(){document.getElementById('panel-workflows').innerHTML=`<div id="workflowList"></div>`;renderWorkflowList();}
-    function renderMemory(){document.getElementById('panel-memory').innerHTML=`<input class="search" id="memoryQuery" placeholder="Search memories"><div id="memoryList" class="memory-grid cards"></div>`;document.getElementById('memoryQuery').oninput=refreshMemory;}
-    function renderFeed(){document.getElementById('panel-feed').innerHTML=`<div class="row"><button id="fetchDigest">Generate Today's Digest</button><span class="spacer"></span><small id="feedCount"></small></div><div id="feedList" class="cards"></div><div id="digestList"></div>`;document.getElementById('fetchDigest').onclick=generateDigest;refreshFeed();}
-    function renderMosaic(){document.getElementById('panel-mosaic').innerHTML=`<div class="row"><input class="search" id="mosaicTask" placeholder="Synthesis task"><select id="mosaicFormat"><option value="markdown">markdown</option><option value="text">text</option><option value="code">code</option><option value="json">json</option></select><button id="mosaicRun">Synthesize</button></div><textarea id="mosaicSources" rows="8" class="search" placeholder='[{&quot;id&quot;:&quot;1&quot;,&quot;type&quot;:&quot;text&quot;,&quot;content&quot;:&quot;...&quot;,&quot;label&quot;:&quot;Source 1&quot;}]'></textarea><div class="row"><button id="mosaicMerge">Merge Code</button><button id="mosaicDiff">Diff Sources</button><input id="mosaicCite" class="search" placeholder="Mosaic ID to cite"></div><pre id="mosaicResult" style="white-space:pre-wrap"></pre>`;document.getElementById('mosaicRun').onclick=runMosaic;document.getElementById('mosaicMerge').onclick=mergeMosaic;document.getElementById('mosaicDiff').onclick=diffMosaic;}
-    function renderReasoning(){document.getElementById('panel-reasoning').innerHTML=`<div class="row"><button class="tab-btn" data-tab="analyze">Analyze Decision</button><button class="tab-btn" data-tab="whatif">What If Scenario</button></div><div id="reasoningBody"></div>`;switchReasoning('analyze');}
-    function renderMonitor(){document.getElementById('panel-monitor').innerHTML=`<div class="row"><div style="flex:1">CPU<div class="metric"><div id="cpuGauge"></div></div></div><div style="flex:1">RAM<div class="metric"><div id="ramGauge"></div></div></div><div style="flex:1">Disk<div class="metric"><div id="diskGauge"></div></div></div></div><div id="phantomTasks"></div>`;}
-    function renderAudit(){document.getElementById('panel-audit').innerHTML=`<div class="row"><button id="exportAudit">Export</button></div><div id="auditList" class="audit-log"></div>`;}
-    function switchReasoning(tab){const body=document.getElementById('reasoningBody');body.innerHTML=tab==='analyze'?`<textarea id="reasonQ" rows="4" class="search" placeholder="Question"></textarea><textarea id="reasonCtx" rows="3" class="search" placeholder="Context (optional)"></textarea><label><input type="checkbox" id="useIris" checked> Use IRIS research</label><button id="analyzeBtn">Analyze</button><div id="reasonResult"></div>`:`<textarea id="changeQ" rows="4" class="search" placeholder="Change description"></textarea><textarea id="baseState" rows="3" class="search" placeholder="Base state (optional)"></textarea><button id="whatIfBtn">Analyze</button><div id="whatIfResult"></div>`;document.getElementById('analyzeBtn')?.addEventListener('click',analyzeDecision);document.getElementById('whatIfBtn')?.addEventListener('click',whatIf);document.querySelectorAll('.tab-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.tab===tab));document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>switchReasoning(btn.dataset.tab));}
-    function setFeed(item){const el=document.createElement('div');el.className='feed-item'+(item.type==='aura.error'?' error':'');el.innerHTML=`<div class="row"><strong>${item.type}</strong><span class="spacer"></span><small>${new Date(item.timestamp).toLocaleTimeString()}</small></div><div>${JSON.stringify(item.data).slice(0,120)}</div>`;const feed=document.getElementById('liveFeed');feed.prepend(el);while(feed.children.length>50)feed.removeChild(feed.lastChild);}
-    async function refreshState(){const res=await fetch('/api/state');state.snapshot=await res.json();renderAll();}
-    async function sendMessage(){const text=document.getElementById('msg').value.trim();if(!text)return;const importance=Number(document.getElementById('importance').value);const res=await fetch('/api/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,importance})});const data=await res.json();appendChat(text,true);appendChat(data.response||'',false,data);document.getElementById('msg').value='';}
-    function appendChat(text,user,data={}){const log=document.getElementById('chatLog');if(!log)return;const el=document.createElement('div');el.className=`message ${user?'user':''}`;el.innerHTML=`${text.replace(/</g,'&lt;')}${data.used_ensemble?'<div>'+badge('ENSEMBLE')+'</div>':''}`;log.appendChild(el);log.scrollTop=log.scrollHeight;}
-    async function renderWorkflowList(){const list=document.getElementById('workflowList');if(!list)return;const workflows=state.snapshot?.active_workflows||[];list.innerHTML=workflows.map(w=>`<div class="card"><div class="row"><strong>${w.name}</strong><span class="spacer"></span>${badge(w.status)}</div><div>${w.current_step||''}</div><div class="metric"><div style="width:${Math.min(100,(w.total_steps?((w.total_steps-1)/w.total_steps)*100:100))}%"></div></div><div class="row"><button onclick="pauseWorkflow('${w.id}')">Pause</button><button onclick="resumeWorkflow('${w.id}')">Resume</button><button onclick="cancelWorkflow('${w.id}')">Cancel</button></div></div>`).join('');}
-    async function refreshFeed(){const res=await fetch('/api/stream/items?limit=20');const items=await res.json();document.getElementById('feedCount').textContent=`${items.length} unread items`;document.getElementById('feedBadge').textContent=items.length;document.getElementById('feedList').innerHTML=items.map(item=>`<div class="card"><div class="row"><strong>${item.title}</strong><span class="spacer"></span>${badge(item.category||'stream')}</div><div>${item.preview||item.summary||''}</div><div class="row"><small>${item.timestamp||''}</small><button onclick="markStreamRead('${item.id}')">Mark Read</button></div></div>`).join('');}
-    async function refreshMemory(){const q=document.getElementById('memoryQuery')?.value||'';const res=await fetch(`/api/memories?query=${encodeURIComponent(q)}&limit=20`);const items=await res.json();document.getElementById('memoryList').innerHTML=items.map(m=>`<div class="card"><div class="row"><strong>${m.key}</strong><span class="spacer"></span><span class="category-badge">${m.category}</span></div><div>${m.preview}</div><small>${m.timestamp}</small></div>`).join('');}
-    function renderAll(){renderChat();renderWorkflows();renderMemory();renderFeed();renderMosaic();renderReasoning();renderMonitor();renderAudit();updateHealth();updateAudit();if(window.lucide)lucide.createIcons();}
-    function updateHealth(){const h=state.snapshot?.system_health||{};document.getElementById('cpuGauge').style.width=`${h.cpu_pct||0}%`;document.getElementById('ramGauge').style.width=`${h.ram_pct||0}%`;document.getElementById('diskGauge').style.width=`${h.disk_pct||0}%`;document.getElementById('phantomTasks').innerHTML=(state.snapshot?.phantom_tasks||[]).map(t=>`<div class="card"><div class="row"><strong>${t.name}</strong><span class="spacer"></span>${badge(t.status)}</div><small>${t.last_run||'—'} → ${t.next_run||'—'}</small></div>`).join('');}
-    async function updateAudit(){const res=await fetch('/api/audit-log?limit=100');const entries=await res.json();document.getElementById('auditList').innerHTML=entries.map(e=>`<div class="card"><div class="row"><span>${e.timestamp}</span><span class="spacer"></span>${badge(`Tier ${e.tier||1}`)}</div><div>${e.tool||e.action||''}</div><small>${e.summary||JSON.stringify(e.details||{}).slice(0,120)}</small></div>`).join('');}
-    async function analyzeDecision(){const q=document.getElementById('reasonQ').value;const ctx=document.getElementById('reasonCtx').value||null;const use_iris=document.getElementById('useIris').checked;const res=await fetch('/api/oracle/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,context:ctx,use_iris})});document.getElementById('reasonResult').textContent=JSON.stringify(await res.json(),null,2);}
-    async function whatIf(){const change=document.getElementById('changeQ').value;const base_state=document.getElementById('baseState').value||null;const res=await fetch('/api/oracle/whatif',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({change,base_state})});document.getElementById('whatIfResult').textContent=JSON.stringify(await res.json(),null,2);}
-    async function generateDigest(){await fetch('/api/stream/digest',{method:'POST'});refreshFeed();}
-    async function markStreamRead(id){await fetch(`/api/stream/read/${id}`,{method:'POST'});refreshFeed();}
-    async function runMosaic(){const task=document.getElementById('mosaicTask').value;const output_format=document.getElementById('mosaicFormat').value;const sources=JSON.parse(document.getElementById('mosaicSources').value||'[]');const res=await fetch('/api/mosaic/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task,output_format,sources})});document.getElementById('mosaicResult').textContent=JSON.stringify(await res.json(),null,2);}
-    async function mergeMosaic(){const task=document.getElementById('mosaicTask').value;const sources=JSON.parse(document.getElementById('mosaicSources').value||'[]');const res=await fetch('/api/mosaic/merge-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task,sources})});document.getElementById('mosaicResult').textContent=JSON.stringify(await res.json(),null,2);}
-    async function diffMosaic(){const sources=JSON.parse(document.getElementById('mosaicSources').value||'[]');if(sources.length<2)return;const res=await fetch('/api/mosaic/diff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_a:sources[0],source_b:sources[1]})});document.getElementById('mosaicResult').textContent=JSON.stringify(await res.json(),null,2);}
-    async function pauseWorkflow(id){await fetch(`/api/workflows/${id}/pause`,{method:'POST'});refreshState();}
-    async function resumeWorkflow(id){await fetch(`/api/workflows/${id}/resume`,{method:'POST'});refreshState();}
-    async function cancelWorkflow(id){await fetch(`/api/workflows/${id}`,{method:'DELETE'});refreshState();}
-    document.getElementById('voiceToggle').onclick=async()=>{const enabled=!(state.snapshot?.lyra_status?.voice_mode);await fetch('/api/lyra/voice-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});await refreshState();};
-    document.getElementById('collapseFeed').onclick=()=>document.getElementById('rightbar').classList.toggle('collapsed');
-    document.getElementById('approveApproval').onclick=()=>{const p=state.pendingApproval;if(!p)return;fetch(`/api/workflows/${p.workflow_id}/approve/${p.step_id}`,{method:'POST'});document.getElementById('approvalModal').style.display='none';};
-    document.getElementById('denyApproval').onclick=()=>document.getElementById('approvalModal').style.display='none';
-    function connect(){const ws=new WebSocket(`ws://${location.host}/ws/events`);state.ws=ws;ws.onopen=()=>{document.getElementById('disconnected').classList.add('hidden');state.reconnect=1000;refreshState();};ws.onclose=()=>{document.getElementById('disconnected').classList.remove('hidden');setTimeout(connect,Math.min(30000,state.reconnect*=2));};ws.onmessage=e=>{const msg=JSON.parse(e.data);if(msg.type==='state_snapshot'){state.snapshot=msg.data;renderAll();return;}setFeed(msg);if(msg.type==='aegis.tier3_request'){state.pendingApproval=msg.data;document.getElementById('approvalBody').textContent=JSON.stringify(msg.data,null,2);document.getElementById('approvalModal').style.display='flex';}};}
-    refreshState();connect();switchPanel('chat');
-  </script>
-</body>
+  </body>
 </html>

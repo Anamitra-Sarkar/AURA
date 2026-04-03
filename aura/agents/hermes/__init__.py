@@ -1,5 +1,57 @@
 """Hermes agent package."""
 
+from aura.browser.hermes import (
+    DownloadResult,
+    ElementInfo,
+    ExtractedData,
+    HermesError,
+    OperationResult,
+    PageHandle,
+    close_browser,
+    close_page,
+    click,
+    download_file,
+    extract_data,
+    fill_form,
+    get_page_text,
+    navigate,
+    open_url,
+    register_hermes_tools,
+    scroll,
+    set_config,
+    set_event_bus,
+    take_screenshot,
+    type_text,
+    upload_file,
+    wait_for_element,
+)
+from aura.browser.hermes import tools as tools
 from .agent import HermesAgent
 
-__all__ = ["HermesAgent"]
+__all__ = [
+    "HermesAgent",
+    "DownloadResult",
+    "ElementInfo",
+    "ExtractedData",
+    "HermesError",
+    "OperationResult",
+    "PageHandle",
+    "close_browser",
+    "close_page",
+    "click",
+    "download_file",
+    "extract_data",
+    "fill_form",
+    "get_page_text",
+    "navigate",
+    "open_url",
+    "register_hermes_tools",
+    "scroll",
+    "set_config",
+    "set_event_bus",
+    "take_screenshot",
+    "type_text",
+    "upload_file",
+    "wait_for_element",
+    "tools",
+]

@@ -1,0 +1,79 @@
+== pytest ==
+........................................................................ [ 63%]
+..........................................                               [100%]
+=============================== warnings summary ===============================
+aura/tests/test_multiagent.py::test_dispatch_and_orchestrator
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+  /workspaces/AURA/aura/agents/iris/tools.py:163: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+    with DDGS() as ddgs:
+
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+  /workspaces/AURA/aura/agents/aegis/tools.py:346: RuntimeWarning: coroutine '_monitor_loop' was never awaited
+    task = asyncio.create_task(_monitor_loop(monitor_id, resource, threshold, action, check_interval_seconds))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+== ruff ==
+All checks passed!
+
+== pass stubs ==
+aura/memory/mneme/tools.py:470:            pass
+aura/browser/hermes/tools.py:480:            pass
+aura/ui/server.py:612:        pass
+aura/ui/server.py:626:        pass
+aura/core/router/quota_tracker.py:157:                pass
+aura/core/agent_loop.py:195:            pass
+aura/core/multiagent/orchestrator.py:56:                pass
+aura/agents/aegis/tools.py:6:import getpass
+aura/agents/aegis/tools.py:263:        pass
+aura/agents/aegis/tools.py:276:        pass
+aura/agents/aegis/tools.py:395:            pass
+aura/agents/phantom/tools.py:232:        pass
+aura/agents/phantom/tools.py:334:            pass
+aura/agents/phantom/tools.py:356:            pass
+aura/agents/phantom/tools.py:360:            pass
+aura/agents/phantom/tools.py:591:            pass
+aura/agents/echo/tools.py:414:            pass
+aura/agents/mosaic/tools.py:105:        pass
+aura/agents/mosaic/tools.py:122:        pass
+aura/agents/mosaic/tools.py:148:        pass
+aura/agents/mosaic/tools.py:288:            pass
+aura/agents/director/tools.py:287:        pass
+aura/agents/director/tools.py:634:                pass
+aura/agents/director/tools.py:679:            pass
+aura/agents/oracle_deep/tools.py:75:        pass
+aura/agents/oracle_deep/tools.py:413:            pass
+aura/agents/stream/tools.py:436:        pass
+aura/agents/stream/tools.py:440:        pass
+aura/agents/stream/tools.py:467:            pass
+aura/agents/logos/tools.py:296:        pass
+aura/agents/logos/tools.py:317:        pass
+aura/agents/logos/tools.py:498:            pass
+aura/agents/ensemble/tools.py:104:        pass
+aura/agents/ensemble/tools.py:192:            pass
+aura/agents/atlas/tools.py:523:            pass
+aura/agents/lyra/tools.py:374:            pass
+aura/agents/iris/tools.py:240:            pass
+aura/agents/iris/tools.py:293:            pass
+aura/agents/iris/tools.py:302:            pass
+aura/agents/iris/tools.py:309:            pass
+aura/agents/iris/tools.py:395:            pass
+aura/daemon.py:123:        pass
+aura/daemon.py:219:        pass
+
+== import smoke ==
+All imports OK
+
+== async bug check ==
+Async bug check PASSED
+
+== daemon once ==
+{"timestamp": "2026-04-03T08:24:13.372867+00:00", "level": "INFO", "logger": "__main__", "message": "bootstrapping", "component": "daemon", "extra": {"taskName": "Task-1"}}
+{"config": "/workspaces/AURA/aura/config/config.yaml", "result": {"ok": true, "answer": "Offline fallback response for: {\"instructions\": \"Respond with JSON: {type: 'tool'|'final', ...}\", \"tools\": [{\"name\": \"get_system_info\", \"description\": ", "error": null, "steps": []}}
+
+== root route ==
+200
+True

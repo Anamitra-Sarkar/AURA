@@ -1,0 +1,205 @@
+### pytest aura/tests/ -v --tb=short
+/home/codespace/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:207: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.1, pytest-8.3.4, pluggy-1.6.0
+rootdir: /workspaces/AURA
+configfile: pytest.ini
+plugins: asyncio-0.25.3, anyio-4.13.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None
+collected 114 items
+
+aura/tests/test_aegis.py .........                                       [  7%]
+aura/tests/test_agent_loop.py ..                                         [  9%]
+aura/tests/test_atlas.py ......                                          [ 14%]
+aura/tests/test_branch_compression.py ...                                [ 17%]
+aura/tests/test_config.py .                                              [ 18%]
+aura/tests/test_core_runtime_branches.py ....                            [ 21%]
+aura/tests/test_cortex.py ..                                             [ 23%]
+aura/tests/test_daemon.py ..                                             [ 25%]
+aura/tests/test_director.py ...                                          [ 28%]
+aura/tests/test_echo.py ....                                             [ 31%]
+aura/tests/test_ensemble.py ....                                         [ 35%]
+aura/tests/test_event_bus.py .                                           [ 35%]
+aura/tests/test_hermes.py ....                                           [ 39%]
+aura/tests/test_hotkey.py .                                              [ 40%]
+aura/tests/test_ipc.py .                                                 [ 41%]
+aura/tests/test_iris.py ....                                             [ 44%]
+aura/tests/test_llm_router.py .                                          [ 45%]
+aura/tests/test_logging.py .                                             [ 46%]
+aura/tests/test_logos.py ......                                          [ 51%]
+aura/tests/test_lyra.py .............                                    [ 63%]
+aura/tests/test_mneme.py ....                                            [ 66%]
+aura/tests/test_mosaic.py ...                                            [ 69%]
+aura/tests/test_multiagent.py ...                                        [ 71%]
+aura/tests/test_nexus_agent.py .                                         [ 72%]
+aura/tests/test_nexus_ui.py ..                                           [ 74%]
+aura/tests/test_oracle_deep.py ...                                       [ 77%]
+aura/tests/test_phantom.py ....                                          [ 80%]
+aura/tests/test_phase10_coverage_boost.py .......                        [ 86%]
+aura/tests/test_platform.py ..                                           [ 88%]
+aura/tests/test_router.py ...                                            [ 91%]
+aura/tests/test_runtime_branches.py ....                                 [ 94%]
+aura/tests/test_stream.py ....                                           [ 98%]
+aura/tests/test_tools.py .                                               [ 99%]
+aura/tests/test_tray.py .                                                [100%]
+
+=============================== warnings summary ===============================
+aura/tests/test_multiagent.py::test_dispatch_and_orchestrator
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+  /workspaces/AURA/aura/agents/iris/tools.py:134: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+    with DDGS() as ddgs:
+
+aura/tests/test_phase10_coverage_boost.py::test_iris_and_aegis_extra_branches
+  /workspaces/AURA/aura/agents/aegis/tools.py:346: RuntimeWarning: coroutine '_monitor_loop' was never awaited
+    task = asyncio.create_task(_monitor_loop(monitor_id, resource, threshold, action, check_interval_seconds))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 114 passed, 4 warnings in 7.88s ========================
+
+### ruff check aura/
+All checks passed!
+
+### pass stubs
+aura/memory/mneme/tools.py:470:            pass
+aura/browser/hermes/tools.py:480:            pass
+aura/ui/server.py:583:        pass
+aura/ui/server.py:597:        pass
+aura/core/router/quota_tracker.py:157:                pass
+aura/core/agent_loop.py:195:            pass
+aura/core/multiagent/orchestrator.py:54:                pass
+aura/agents/aegis/tools.py:6:import getpass
+aura/agents/aegis/tools.py:263:        pass
+aura/agents/aegis/tools.py:276:        pass
+aura/agents/aegis/tools.py:395:            pass
+aura/agents/phantom/tools.py:232:        pass
+aura/agents/phantom/tools.py:334:            pass
+aura/agents/phantom/tools.py:356:            pass
+aura/agents/phantom/tools.py:360:            pass
+aura/agents/phantom/tools.py:577:            pass
+aura/agents/echo/tools.py:384:            pass
+aura/agents/mosaic/tools.py:105:        pass
+aura/agents/mosaic/tools.py:122:        pass
+aura/agents/mosaic/tools.py:148:        pass
+aura/agents/mosaic/tools.py:288:            pass
+aura/agents/director/tools.py:287:        pass
+aura/agents/director/tools.py:634:                pass
+aura/agents/director/tools.py:679:            pass
+aura/agents/oracle_deep/tools.py:75:        pass
+aura/agents/oracle_deep/tools.py:413:            pass
+aura/agents/stream/tools.py:436:        pass
+aura/agents/stream/tools.py:440:        pass
+aura/agents/stream/tools.py:467:            pass
+aura/agents/logos/tools.py:272:        pass
+aura/agents/logos/tools.py:293:        pass
+aura/agents/logos/tools.py:474:            pass
+aura/agents/ensemble/tools.py:104:        pass
+aura/agents/ensemble/tools.py:192:            pass
+aura/agents/atlas/tools.py:519:            pass
+aura/agents/lyra/tools.py:374:            pass
+aura/agents/iris/tools.py:204:            pass
+aura/agents/iris/tools.py:257:            pass
+aura/agents/iris/tools.py:266:            pass
+aura/agents/iris/tools.py:273:            pass
+aura/agents/iris/tools.py:359:            pass
+aura/daemon.py:123:        pass
+aura/daemon.py:219:        pass
+
+### async/await hot paths
+aura/core/agent_loop.py:55:    async def run(self, user_message: str, importance: int | None = None) -> AgentLoopResult:
+aura/core/agent_loop.py:70:            model_result = await self._model_call(messages, user_message, importance)
+aura/core/agent_loop.py:76:                await self._maybe_voice_response(answer)
+aura/core/agent_loop.py:80:                await self._maybe_voice_response(answer)
+aura/core/agent_loop.py:92:            tool_result = await self.registry.execute(tool_name, arguments, confirm=True)
+aura/core/agent_loop.py:95:                await self.event_bus.publish("agent.tool", {"tool": tool_name, "result": self._tool_result_dict(tool_result)})
+aura/core/agent_loop.py:104:    async def handle_message(self, user_message: str, importance: int | None = None) -> dict[str, Any]:
+aura/core/agent_loop.py:108:            result = await self.orchestrator.handle(user_message, "local", {}, importance or 2)
+aura/core/agent_loop.py:115:        result = await self.run(user_message, importance=importance)
+aura/core/agent_loop.py:123:    async def _model_call(self, messages: list[dict[str, Any]], user_message: str, importance: int | None = None) -> _ModelTurn:
+aura/core/agent_loop.py:130:            result = await ensemble_answer(prompt, importance_level=importance, models=ensemble.models, context=None)
+aura/core/agent_loop.py:132:        result = await self.router.chat(messages)
+aura/core/agent_loop.py:135:    async def _extract_memories(self, user_message: str, response: str) -> None:
+aura/core/agent_loop.py:141:            await auto_extract_memories(user_message, response)
+aura/core/agent_loop.py:145:    async def _maybe_voice_response(self, answer: str) -> None:
+aura/core/agent_loop.py:153:            await asyncio.to_thread(speak, spoken)
+aura/core/agent_loop.py:154:            await asyncio.to_thread(listen_once)
+aura/core/multiagent/orchestrator.py:30:    async def handle(self, message: str, user_id: str, context: dict[str, Any], importance: int = 2) -> OrchestratorResult:
+aura/core/multiagent/orchestrator.py:34:            await asyncio.to_thread(memory_module.inject_context, f"{user_id}:{message}")
+aura/core/multiagent/orchestrator.py:38:            call = await self.smart_router.complete(message, [{"role": "user", "content": message}], importance=importance)
+aura/core/multiagent/orchestrator.py:42:            plan = await self.dispatcher.dispatch(A2ATask(task_id=str(uuid.uuid4()), from_agent="director", to_agent="director", instruction=message, context=context, priority=importance))
+aura/core/multiagent/orchestrator.py:47:            agent_result = await self.dispatcher.dispatch(task)
+aura/core/multiagent/orchestrator.py:52:                await memory_module.auto_extract_memories(message, result.response)
+aura/ui/server.py:239:async def _broadcast_event(topic: str, payload: Any) -> None:
+aura/ui/server.py:248:            await client.send_json(message)
+aura/ui/server.py:255:async def _ensure_event_bridge() -> None:
+aura/ui/server.py:260:    runtime.event_token = await runtime.event_bus.subscribe("*", _broadcast_event)
+aura/ui/server.py:264:async def _shutdown_event_bridge() -> None:
+aura/ui/server.py:268:        await runtime.event_bus.unsubscribe("*", runtime.event_token)
+aura/ui/server.py:273:            await client.close()
+aura/ui/server.py:280:async def lifespan(application: FastAPI):
+aura/ui/server.py:282:    await _ensure_event_bridge()
+aura/ui/server.py:286:        await _shutdown_event_bridge()
+aura/ui/server.py:293:async def auth_middleware(request: Request, call_next):
+aura/ui/server.py:297:    return await call_next(request)
+aura/ui/server.py:301:async def index() -> HTMLResponse:
+aura/ui/server.py:309:async def health() -> dict[str, Any]:
+aura/ui/server.py:316:async def auth_register(payload: dict[str, str]) -> dict[str, Any]:
+aura/ui/server.py:326:async def auth_login(payload: dict[str, str]) -> dict[str, Any]:
+aura/ui/server.py:336:async def auth_me(request: Request) -> dict[str, Any]:
+aura/ui/server.py:345:async def api_state() -> dict[str, Any]:
+aura/ui/server.py:350:async def api_message(payload: MessageRequest, request: Request) -> dict[str, Any]:
+aura/ui/server.py:354:        result = await runtime.orchestrator.handle(payload.text, user_id, {}, importance=payload.importance)
+aura/ui/server.py:361:    result = await runtime.agent_loop.handle_message(payload.text, importance=payload.importance)
+aura/ui/server.py:366:async def a2a_agents() -> list[dict[str, Any]]:
+aura/ui/server.py:372:async def a2a_agent(agent_id: str) -> dict[str, Any]:
+aura/ui/server.py:381:async def a2a_agent_task(agent_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+aura/ui/server.py:396:    result = await dispatcher.dispatch(A2ATask(**task))
+aura/ui/server.py:401:async def mcp_tools() -> list[dict[str, Any]]:
+aura/ui/server.py:406:async def mcp_call(agent_id: str, tool_name: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+aura/ui/server.py:408:    return await call_mcp_tool(agent_id, tool_name, payload.get("arguments", {}))
+aura/ui/server.py:412:async def api_workflows() -> list[dict[str, Any]]:
+aura/ui/server.py:418:async def api_pause_workflow(workflow_id: str) -> Any:
+aura/ui/server.py:423:async def api_resume_workflow(workflow_id: str) -> Any:
+aura/ui/server.py:426:        result = await result
+aura/ui/server.py:431:async def api_approve_step(workflow_id: str, step_id: str) -> Any:
+aura/ui/server.py:436:async def api_cancel_workflow(workflow_id: str) -> Any:
+aura/ui/server.py:441:async def api_memories(query: str = "", category: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+aura/ui/server.py:460:async def api_delete_memory(memory_id: str) -> Any:
+aura/ui/server.py:465:async def api_oracle_report(report_id: str) -> Any:
+aura/ui/server.py:473:async def api_oracle_analyze(payload: OracleAnalyzeRequest) -> Any:
+aura/ui/server.py:474:    return _serialize(await oracle_tools.analyze_decision(payload.question, payload.context, payload.use_iris))
+aura/ui/server.py:478:async def api_oracle_whatif(payload: OracleWhatIfRequest) -> Any:
+aura/ui/server.py:479:    return _serialize(await oracle_tools.what_if_scenario(payload.change, payload.base_state))
+aura/ui/server.py:483:async def api_audit_log(limit: int = 100) -> list[dict[str, Any]]:
+aura/ui/server.py:498:async def api_lyra_speak(payload: dict[str, Any] = Body(...)) -> Any:
+aura/ui/server.py:503:async def api_voice_mode(payload: VoiceModeRequest) -> dict[str, Any]:
+aura/ui/server.py:512:async def api_stream_sources() -> list[dict[str, Any]]:
+aura/ui/server.py:517:async def api_stream_items(limit: int = 20) -> list[dict[str, Any]]:
+aura/ui/server.py:522:async def api_stream_fetch(source_id: str | None = None) -> list[dict[str, Any]]:
+aura/ui/server.py:523:    return [_serialize(item) for item in await stream_tools.fetch_stream(source_id)]
+aura/ui/server.py:527:async def api_stream_digest(date: str | None = None) -> dict[str, Any]:
+aura/ui/server.py:532:async def api_stream_read(item_id: str) -> Any:
+aura/ui/server.py:537:async def api_mosaic_synthesize(payload: dict[str, Any] = Body(...)) -> Any:
+aura/ui/server.py:539:    result = await mosaic_tools.synthesize(str(payload.get("task", "")), sources, str(payload.get("output_format", "markdown")), payload.get("max_length"))
+aura/ui/server.py:544:async def api_mosaic_merge_code(payload: dict[str, Any] = Body(...)) -> Any:
+aura/ui/server.py:546:    result = await mosaic_tools.merge_code(sources, str(payload.get("task", "")), str(payload.get("language", "python")))
+aura/ui/server.py:551:async def api_mosaic_diff(payload: dict[str, Any] = Body(...)) -> Any:
+aura/ui/server.py:556:async def api_mosaic_cite(mosaic_id: str) -> dict[str, Any]:
+aura/ui/server.py:561:async def websocket_client(websocket: WebSocket, user_id: str) -> None:
+aura/ui/server.py:566:            await websocket.close(code=4401)
+aura/ui/server.py:571:            await websocket.close(code=4401)
+aura/ui/server.py:574:            await websocket.close(code=4403)
+aura/ui/server.py:576:    await websocket.accept()
+aura/ui/server.py:578:    await websocket.send_json({"type": "hello", "platform": "linux", "capabilities": ["atlas", "aegis", "hermes", "lyra"], "aura_version": aura.__version__})
+aura/ui/server.py:581:            await websocket.receive_text()
+aura/ui/server.py:589:async def websocket_events(websocket: WebSocket) -> None:
+aura/ui/server.py:590:    await websocket.accept()
+aura/ui/server.py:592:    await websocket.send_json({"type": "state_snapshot", "data": build_state_snapshot(), "timestamp": datetime.now(timezone.utc).isoformat()})
+aura/ui/server.py:595:            await websocket.receive_text()
+aura/ui/server.py:602:async def start_server() -> None:
+aura/ui/server.py:611:    await server.serve()

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import re
+import threading
 import urllib.parse
 import urllib.request
 from dataclasses import asdict
@@ -23,6 +26,7 @@ from .models import ComparativeSummary, FactCheckReport, PageContent, Paper, Sea
 LOGGER = get_logger(__name__, component="iris")
 CONFIG: AppConfig = load_config()
 _ROUTER: Any | None = None
+_ROUTER_LOCK = threading.Lock()
 
 
 class IrisError(Exception):
@@ -72,7 +76,32 @@ def set_config(config: AppConfig) -> None:
 
 def set_router(router: Any | None) -> None:
     global _ROUTER
-    _ROUTER = router
+    with _ROUTER_LOCK:
+        _ROUTER = router
+
+
+def _get_router() -> Any | None:
+    with _ROUTER_LOCK:
+        return _ROUTER
+
+
+def _run_coroutine_blocking(coro: Any) -> Any:
+    """Run a coroutine from sync code, even if an event loop already exists."""
+
+    result: dict[str, Any] = {}
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(coro)
+        except Exception as exc:  # pragma: no cover - propagated below
+            result["error"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in result:
+        raise result["error"]
+    return result.get("value")
 
 
 def _memory_tools() -> tuple[Any, Any]:
@@ -167,7 +196,14 @@ def fetch_url(url: str, extract_main_content: bool = True) -> PageContent:
             text = "\n".join(text_parser.parts)
         return PageContent(url=str(Path(url)), title=title, main_text=text, word_count=len(text.split()), fetched_at=datetime.now(timezone.utc), links=links)
     if extract_main_content:
-        page_id = hermes.open_url(url, check_safety=False).page_id
+        open_url = hermes.open_url
+        if inspect.iscoroutinefunction(open_url):
+            page_result = _run_coroutine_blocking(open_url(url, check_safety=False))
+        else:
+            page_result = open_url(url, check_safety=False)
+            if inspect.isawaitable(page_result):
+                page_result = _run_coroutine_blocking(page_result)
+        page_id = page_result.page_id
         text = hermes.get_page_text(page_id)
     else:
         with urllib.request.urlopen(url, timeout=20) as response:  # noqa: S310 - local-first tooling
@@ -190,7 +226,7 @@ def fetch_url(url: str, extract_main_content: bool = True) -> PageContent:
 
 
 def _synthesize(question: str, sources: list[str], text: str) -> str:
-    router = _ROUTER
+    router = _get_router()
     if router is not None:
         prompt = f"Question: {question}\nSources: {json.dumps(sources)}\nContent: {text}"
         try:

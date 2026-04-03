@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import json
+import inspect
 import shutil
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
-import inspect
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ from aura.core.platform import detect_os
 from .models import CodePatch, Explanation, GitStatus, LintIssue, LintReport, RunResult, SuggestedFix, TestResult
 
 _ROUTER: Any | None = None
+_ROUTER_LOCK = threading.Lock()
 
 
 class LogosError(Exception):
@@ -32,13 +35,34 @@ def set_router(router: Any) -> None:
     """Override the router used for LLM-backed tools."""
 
     global _ROUTER
-    _ROUTER = router
+    with _ROUTER_LOCK:
+        _ROUTER = router
 
 
 def _router() -> Any:
     """Return the configured router or None."""
 
-    return _ROUTER
+    with _ROUTER_LOCK:
+        return _ROUTER
+
+
+def _run_async(coro: Any) -> Any:
+    """Run a coroutine from sync tool handlers."""
+
+    result: dict[str, Any] = {}
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(coro)
+        except Exception as exc:  # pragma: no cover - propagated below
+            result["error"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in result:
+        raise result["error"]
+    return result.get("value")
 
 
 def _as_text_response(payload: Any) -> str:
@@ -456,9 +480,9 @@ def register_logos_tools() -> None:
             handler=lambda args: run_code(args["code"], args["language"], args.get("context_dir")),
             tier_resolver=lambda args: 3 if str(args.get("language", "")).lower() == "bash" else 2,
         ),
-        ToolSpec("debug_code", "Debug code with the router.", 1, {"type": "object", "properties": {"code_or_path": {"type": "string"}, "error_message": {"type": "string"}}, "required": ["code_or_path", "error_message"], "additionalProperties": False}, {"type": "object"}, lambda args: debug_code(args["code_or_path"], args["error_message"])),
+        ToolSpec("debug_code", "Debug code with the router.", 1, {"type": "object", "properties": {"code_or_path": {"type": "string"}, "error_message": {"type": "string"}}, "required": ["code_or_path", "error_message"], "additionalProperties": False}, {"type": "object"}, lambda args: _run_async(debug_code(args["code_or_path"], args["error_message"]))),
         ToolSpec("explain_code", "Explain code or a snippet.", 1, {"type": "object", "properties": {"path_or_snippet": {"type": "string"}, "mode": {"type": "string"}}, "required": ["path_or_snippet"], "additionalProperties": False}, {"type": "object"}, lambda args: explain_code(args["path_or_snippet"], args.get("mode", "high_level"))),
-        ToolSpec("generate_code", "Generate code from a description.", 1, {"type": "object", "properties": {"description": {"type": "string"}, "language": {"type": "string"}, "context_files": {"type": ["array", "null"]}}, "required": ["description", "language"], "additionalProperties": False}, {"type": "object"}, lambda args: generate_code(args["description"], args["language"], args.get("context_files"))),
+        ToolSpec("generate_code", "Generate code from a description.", 1, {"type": "object", "properties": {"description": {"type": "string"}, "language": {"type": "string"}, "context_files": {"type": ["array", "null"]}}, "required": ["description", "language"], "additionalProperties": False}, {"type": "object"}, lambda args: _run_async(generate_code(args["description"], args["language"], args.get("context_files")))),
         ToolSpec("apply_code_patch", "Apply a unified diff patch.", 2, {"type": "object", "properties": {"patch": {"type": "string"}, "target_path": {"type": "string"}}, "required": ["patch", "target_path"], "additionalProperties": False}, {"type": "object"}, lambda args: apply_code_patch(args["patch"], args["target_path"])),
         ToolSpec("run_tests", "Run a local test command.", 2, {"type": "object", "properties": {"test_command": {"type": "string"}, "context_dir": {"type": "string"}}, "required": ["test_command", "context_dir"], "additionalProperties": False}, {"type": "object"}, lambda args: run_tests(args["test_command"], args["context_dir"])),
         ToolSpec("lint_code", "Lint source code.", 1, {"type": "object", "properties": {"path": {"type": "string"}, "language": {"type": "string"}}, "required": ["path", "language"], "additionalProperties": False}, {"type": "object"}, lambda args: lint_code(args["path"], args["language"])),

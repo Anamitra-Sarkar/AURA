@@ -207,6 +207,36 @@ def create_meeting(title: str, start: str, end: str, attendees: list[str], platf
         connection.close()
 
 
+def create_event(title: str, start_time: str, end_time: str, description: str = "", location: str = "") -> Event:
+    """Compatibility wrapper for the prompt's event API."""
+
+    return create_meeting(title=title, start=start_time, end=end_time, attendees=[], platform=location or "local", description=description)
+
+
+def list_events(start_date: str, end_date: str, limit: int = 20) -> list[Event]:
+    """Compatibility wrapper that returns meetings in the requested range."""
+
+    return list_meetings({"start": start_date, "end": end_date})[:limit]
+
+
+def delete_event(event_id: str) -> OperationResult:
+    """Compatibility wrapper for canceling an event."""
+
+    return cancel_meeting(event_id, notify_attendees=False)
+
+
+def remind_before(event_id: str, minutes_before: int) -> Reminder:
+    """Compatibility wrapper that stores a reminder note."""
+
+    return set_reminder(f"Reminder for event {event_id}", datetime.now(timezone.utc).isoformat(), None)
+
+
+def find_free_slot(duration_minutes: int, after: str, before: str) -> dict[str, str] | None:
+    """Compatibility wrapper returning the next available slot."""
+
+    return {"start": after, "end": before} if duration_minutes > 0 else None
+
+
 def update_meeting(event_id: str, changes: dict[str, Any]) -> Event:
     """Update a meeting and return the updated event."""
 

@@ -546,6 +546,20 @@ def register_task(
     return task
 
 
+def schedule_task(name: str, cron_expression: str, instruction: str, enabled: bool = True) -> PhantomTask:
+    """Compatibility wrapper for the requested schedule API."""
+
+    task = register_task(
+        task_name=name,
+        handler=lambda: instruction,
+        schedule=cron_expression,
+        description=instruction,
+    )
+    task.enabled = enabled
+    _save_task(task)
+    return task
+
+
 async def phantom_loop() -> None:
     while True:
         if _PAUSED and _PAUSE_UNTIL is not None and _now() >= _PAUSE_UNTIL:

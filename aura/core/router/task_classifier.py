@@ -53,6 +53,46 @@ class TaskClassifier:
                 "openrouter:nvidia/nemotron-3-super-120b:free",
             ]
             rationale = "research keywords detected"
+        elif _contains_any(text, ["file", "folder", "directory", "rename", "move", "copy", "delete", "compress", "extract", "open file", "read file", "write file"]):
+            task_tags = ["file_ops"]
+            best_models = [
+                "groq:llama-3.1-8b-instant",
+                "openrouter:openai/gpt-oss-20b:free",
+                "cerebras:llama-3.3-70b",
+            ]
+            rationale = "file operation keywords detected"
+        elif _contains_any(text, ["schedule", "remind", "meeting", "calendar"]):
+            task_tags = ["calendar"]
+            best_models = [
+                "groq:llama-3.1-8b-instant",
+                "openrouter:arcee-ai/arcee-trinity-mini:free",
+                "cerebras:llama-3.3-70b",
+            ]
+            rationale = "calendar keywords detected"
+        elif _contains_any(text, ["browse", "website", "open website", "go to", "navigate", "url", "fill form"]):
+            task_tags = ["browser"]
+            best_models = [
+                "openrouter:zhipuai/glm-4.5-air:free",
+                "groq:llama-3.3-70b-versatile",
+                "openrouter:openai/gpt-oss-20b:free",
+            ]
+            rationale = "browser keywords detected"
+        elif _contains_any(text, ["create", "write", "generate", "compose", "draft"]):
+            task_tags = ["synthesis"]
+            best_models = [
+                "openrouter:qwen/qwen3.6-plus:free",
+                "groq:openai/gpt-oss-120b",
+                "cerebras:llama-4-scout",
+            ]
+            rationale = "generation keywords detected"
+        elif _contains_any(text, ["complex", "workflow", "plan", "orchestrate", "multi-step"]):
+            task_tags = ["workflow"]
+            best_models = [
+                "openrouter:nvidia/nemotron-3-super-120b:free",
+                "cerebras:llama-4-scout",
+                "groq:llama-3.3-70b-versatile",
+            ]
+            rationale = "workflow keywords detected"
         elif _contains_any(text, ["translate", "multilingual", "language"]):
             task_tags = ["multilingual"]
             best_models = [
