@@ -16,3 +16,11 @@ mss==9.0.2
 fastapi==0.115.8
 uvicorn==0.34.0
 pydantic==2.10.6
+chromadb==0.6.3
+playwright==1.49.1
+faster-whisper==1.1.1
+python-pptx==1.0.2
+google-auth==2.38.0
+google-api-python-client==2.161.0
+apscheduler==3.11.0
+arxiv==2.1.3

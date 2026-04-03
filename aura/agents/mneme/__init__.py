@@ -1,3 +1,5 @@
+"""Mneme agent package."""
 
+from .agent import MnemeAgent
 
-TOOL_LIST = []
+__all__ = ["MnemeAgent"]

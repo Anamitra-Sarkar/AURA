@@ -1,40 +1,5 @@
-"""ECHO calendar and meeting agent."""
+"""Echo agent package."""
 
-from .models import EmailDraft, Event, OperationResult, Reminder
-from .tools import (
-    cancel_meeting,
-    create_meeting,
-    draft_email,
-    get_upcoming_reminders,
-    join_meeting,
-    list_meetings,
-    parse_natural_time,
-    register_echo_tools,
-    send_email,
-    set_config,
-    set_reminder,
-    set_email_config,
-    update_meeting,
-)
+from .agent import EchoAgent
 
-__all__ = [
-    "EmailDraft",
-    "Event",
-    "OperationResult",
-    "Reminder",
-    "cancel_meeting",
-    "create_meeting",
-    "draft_email",
-    "get_upcoming_reminders",
-    "join_meeting",
-    "list_meetings",
-    "parse_natural_time",
-    "register_echo_tools",
-    "send_email",
-    "set_config",
-    "set_reminder",
-    "set_email_config",
-    "update_meeting",
-]
-
-TOOL_LIST = [name for name in __all__ if name and name[0].islower()]
+__all__ = ["EchoAgent"]

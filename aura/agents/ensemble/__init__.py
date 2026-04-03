@@ -1,18 +1,7 @@
-"""ENSEMBLE multi-model debate engine."""
+"""Ensemble agent package."""
 
-from .models import EnsembleResult, ImportanceLevel, ModelResponse
-from .tools import EnsembleTool, benchmark_models, ensemble_answer, get_available_models, register_ensemble_tools, set_config
+from .agent import EnsembleAgent
+from .models import ImportanceLevel
+from .tools import EnsembleTool
 
-__all__ = [
-    "EnsembleTool",
-    "EnsembleResult",
-    "ImportanceLevel",
-    "ModelResponse",
-    "benchmark_models",
-    "ensemble_answer",
-    "get_available_models",
-    "register_ensemble_tools",
-    "set_config",
-]
-
-TOOL_LIST = ["ensemble_answer", "get_available_models", "benchmark_models"]
+__all__ = ["EnsembleAgent", "EnsembleTool", "ImportanceLevel"]

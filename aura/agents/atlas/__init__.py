@@ -1,41 +1,5 @@
-"""ATLAS file system agent."""
+"""Atlas agent package."""
 
-from .models import FileContent, FileEntry, FileMatch, OperationResult, WatchHandle
-from .tools import (
-    compress_folder,
-    copy_file,
-    delete_file,
-    extract_archive,
-    list_directory,
-    move_file,
-    open_file,
-    read_file,
-    rename_file,
-    search_files,
-    set_event_bus,
-    watch_folder,
-    write_file,
-)
+from .agent import AtlasAgent
 
-__all__ = [
-    "FileContent",
-    "FileEntry",
-    "FileMatch",
-    "OperationResult",
-    "WatchHandle",
-    "compress_folder",
-    "copy_file",
-    "delete_file",
-    "extract_archive",
-    "list_directory",
-    "move_file",
-    "open_file",
-    "read_file",
-    "rename_file",
-    "search_files",
-    "set_event_bus",
-    "watch_folder",
-    "write_file",
-]
-
-TOOL_LIST = [name for name in __all__ if name and name[0].islower()]
+__all__ = ["AtlasAgent"]

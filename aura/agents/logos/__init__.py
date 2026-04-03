@@ -1,44 +1,5 @@
-"""LOGOS code and logic agent."""
+"""Logos agent package."""
 
-from .models import CodePatch, Explanation, GitStatus, LintIssue, LintReport, RunResult, SuggestedFix, TestResult
-from .tools import (
-    apply_code_patch,
-    debug_code,
-    explain_code,
-    generate_code,
-    git_commit,
-    git_diff,
-    git_push,
-    git_status,
-    lint_code,
-    register_logos_tools,
-    run_code,
-    run_tests,
-    set_router,
-)
+from .agent import LogosAgent
 
-__all__ = [
-    "CodePatch",
-    "Explanation",
-    "GitStatus",
-    "LintIssue",
-    "LintReport",
-    "RunResult",
-    "SuggestedFix",
-    "TestResult",
-    "apply_code_patch",
-    "debug_code",
-    "explain_code",
-    "generate_code",
-    "git_commit",
-    "git_diff",
-    "git_push",
-    "git_status",
-    "lint_code",
-    "register_logos_tools",
-    "run_code",
-    "run_tests",
-    "set_router",
-]
-
-TOOL_LIST = [name for name in __all__ if name and name[0].islower()]
+__all__ = ["LogosAgent"]

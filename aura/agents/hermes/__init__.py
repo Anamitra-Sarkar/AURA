@@ -1,3 +1,5 @@
+"""Hermes agent package."""
 
+from .agent import HermesAgent
 
-TOOL_LIST = []
+__all__ = ["HermesAgent"]
