@@ -14,6 +14,7 @@ from typing import Any
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import aura
@@ -40,6 +41,7 @@ from aura.memory import delete_memory, list_memories, recall_memory
 LOGGER = get_logger(__name__, component="nexus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 INDEX_PATH = STATIC_DIR / "index.html"
+ASSETS_DIR = STATIC_DIR / "assets"
 PLACEHOLDER_INDEX = """<!doctype html>
 <html lang="en">
   <head>
@@ -124,6 +126,7 @@ def _default_runtime() -> NexusRuntime:
 
 
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 if not INDEX_PATH.exists():
     INDEX_PATH.write_text(PLACEHOLDER_INDEX, encoding="utf-8")
 
@@ -349,6 +352,10 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="AURA Nexus UI", version=aura.__version__, lifespan=lifespan)
+
+# Mount /assets so Vite-built JS/CSS bundles are served correctly
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 
 @app.middleware("http")
