@@ -28,7 +28,6 @@ function wsUrl(path: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${window.location.host}${path}`;
   }
-  // Convert https://host → wss://host
   return API_BASE.replace(/^http/, 'ws') + path;
 }
 
@@ -37,37 +36,19 @@ function now(): string {
 }
 
 function createMessage(role: AuraMessage['role'], content: string, overrides: Partial<AuraMessage> = {}): AuraMessage {
-  return {
-    id: crypto.randomUUID(),
-    role,
-    content,
-    createdAt: now(),
-    ...overrides,
-  };
+  return { id: crypto.randomUUID(), role, content, createdAt: now(), ...overrides };
 }
 
 function safeJson(value: unknown): string {
-  if (value == null) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '[unserializable]';
-  }
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return '[unserializable]'; }
 }
 
 function summarizeStep(step: { tool?: string; result?: unknown; error?: string } | string): AuraToolSummary {
-  if (typeof step === 'string') {
-    return { tool: step, summary: 'Completed' };
-  }
+  if (typeof step === 'string') return { tool: step, summary: 'Completed' };
   const tool = step.tool || 'tool';
-  if (step.error) {
-    return { tool, summary: `Error: ${step.error}` };
-  }
+  if (step.error) return { tool, summary: `Error: ${step.error}` };
   const result = step.result;
   if (result && typeof result === 'object' && 'message' in result) {
     return { tool, summary: safeJson((result as { message?: unknown }).message) };
@@ -76,15 +57,9 @@ function summarizeStep(step: { tool?: string; result?: unknown; error?: string }
 }
 
 function summarizeFeedPayload(payload: unknown): { agent: string; action: string } {
-  if (payload == null) {
-    return { agent: 'aura', action: 'event' };
-  }
-  if (typeof payload === 'string') {
-    return { agent: 'aura', action: payload };
-  }
-  if (typeof payload !== 'object') {
-    return { agent: 'aura', action: String(payload) };
-  }
+  if (payload == null) return { agent: 'aura', action: 'event' };
+  if (typeof payload === 'string') return { agent: 'aura', action: payload };
+  if (typeof payload !== 'object') return { agent: 'aura', action: String(payload) };
   const data = payload as Record<string, unknown>;
   const agent = String(data.agent || data.agent_id || data.source || data.tool || 'aura');
   const action = String(data.action || data.tool || data.event || data.type || safeJson(payload));
@@ -93,22 +68,15 @@ function summarizeFeedPayload(payload: unknown): { agent: string; action: string
 
 function iconForAgent(agent: string): string {
   const mapping: Record<string, string> = {
-    atlas: '📂',
-    hermes: '🌐',
-    logos: '💻',
-    aegis: '🖥️',
-    echo: '📅',
-    mneme: '🧠',
-    iris: '🔍',
+    atlas: '📂', hermes: '🌐', logos: '💻', aegis: '🖥️',
+    echo: '📅', mneme: '🧠', iris: '🔍',
   };
   return mapping[agent.toLowerCase()] || '🤖';
 }
 
 async function readJson<T>(response: Response): Promise<T> {
   const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(await response.text());
-  }
+  if (!contentType.includes('application/json')) throw new Error(await response.text());
   return (await response.json()) as T;
 }
 
@@ -116,22 +84,32 @@ function parseSseChunk(chunk: string): AuraMessageStreamEvent[] {
   const events: AuraMessageStreamEvent[] = [];
   for (const block of chunk.split(/\n\n+/)) {
     const line = block.trim();
-    if (!line) {
-      continue;
-    }
-    const dataLine = line.split('\n').find((entry) => entry.startsWith('data:'));
-    if (!dataLine) {
-      continue;
-    }
+    if (!line) continue;
+    const dataLine = line.split('\n').find((e) => e.startsWith('data:'));
+    if (!dataLine) continue;
     const payload = dataLine.replace(/^data:\s*/, '');
-    try {
-      events.push(JSON.parse(payload) as AuraMessageStreamEvent);
-    } catch {
-      continue;
-    }
+    try { events.push(JSON.parse(payload) as AuraMessageStreamEvent); } catch { continue; }
   }
   return events;
 }
+
+// Extract a human-readable error message from a failed fetch Response.
+async function extractErrorMessage(response: Response): Promise<string> {
+  try {
+    const ct = response.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const body = await response.json() as { detail?: string; message?: string };
+      if (body.detail) return String(body.detail);
+      if (body.message) return String(body.message);
+    } else {
+      const text = (await response.text()).trim();
+      if (text) return text;
+    }
+  } catch { /* ignore */ }
+  return `Request failed (${response.status})`;
+}
+
+export type AuthMode = 'login' | 'register';
 
 export function useAuraClient() {
   const [token, setToken] = useState('');
@@ -139,6 +117,7 @@ export function useAuraClient() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [currentUser, setCurrentUser] = useState('');
   const [messages, setMessages] = useState<AuraMessage[]>([createMessage('assistant', 'AURA is ready. Please sign in to continue.')]);
   const [draft, setDraft] = useState('');
@@ -158,9 +137,7 @@ export function useAuraClient() {
 
   const authHeaders = useMemo(() => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token.trim()) {
-      headers.Authorization = `Bearer ${token.trim()}`;
-    }
+    if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
     return headers;
   }, [token]);
 
@@ -186,30 +163,17 @@ export function useAuraClient() {
     (overrideToken?: string, initHeaders?: HeadersInit) => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       const activeToken = overrideToken?.trim() || token.trim();
-      if (activeToken) {
-        headers.Authorization = `Bearer ${activeToken}`;
-      }
-      return {
-        ...headers,
-        ...(initHeaders as Record<string, string> | undefined),
-      };
+      if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
+      return { ...headers, ...(initHeaders as Record<string, string> | undefined) };
     },
     [token],
   );
 
   const apiFetch = useCallback(
     async <T,>(path: string, init: RequestInit = {}, overrideToken?: string): Promise<T> => {
-      const response = await fetch(apiUrl(path), {
-        ...init,
-        headers: buildHeaders(overrideToken, init.headers),
-      });
-      if (response.status === 401) {
-        clearAuth();
-        throw new Error('Unauthorized');
-      }
-      if (!response.ok) {
-        throw new Error(`Request failed (${response.status})`);
-      }
+      const response = await fetch(apiUrl(path), { ...init, headers: buildHeaders(overrideToken, init.headers) });
+      if (response.status === 401) { clearAuth(); throw new Error('Unauthorized'); }
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
       return readJson<T>(response);
     },
     [buildHeaders, clearAuth],
@@ -218,9 +182,7 @@ export function useAuraClient() {
   const refreshAll = useCallback(
     async (overrideToken?: string) => {
       const activeToken = overrideToken?.trim() || token.trim();
-      if (!activeToken) {
-        return;
-      }
+      if (!activeToken) return;
       const [state, healthData, agentData, countData] = await Promise.all([
         apiFetch<AuraStateSnapshot>('/api/state', {}, activeToken),
         apiFetch<AuraHealthState>('/api/health', {}, activeToken),
@@ -232,7 +194,7 @@ export function useAuraClient() {
       setAgents(agentData);
       setMemoryCount(countData.count);
       setActiveWorkflowsCount(state.active_workflows.length);
-      setToolFeed((current) => current.slice(0, 50));
+      setToolFeed((cur) => cur.slice(0, 50));
     },
     [apiFetch, token],
   );
@@ -240,9 +202,7 @@ export function useAuraClient() {
   const refreshSystem = useCallback(
     async (overrideToken?: string) => {
       const activeToken = overrideToken?.trim() || token.trim();
-      if (!activeToken) {
-        return;
-      }
+      if (!activeToken) return;
       const [healthData, countData, state] = await Promise.all([
         apiFetch<AuraHealthState>('/api/health', {}, activeToken),
         apiFetch<{ count: number }>('/api/memories/count', {}, activeToken),
@@ -257,9 +217,7 @@ export function useAuraClient() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
+    if (!isAuthenticated) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -269,9 +227,7 @@ export function useAuraClient() {
           apiFetch<AuraAgentCard[]>('/a2a/agents?include_hidden=true'),
           apiFetch<{ count: number }>('/api/memories/count'),
         ]);
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setSnapshot(state);
         setHealth(healthData);
         setAgents(agentsData);
@@ -279,20 +235,14 @@ export function useAuraClient() {
         setActiveWorkflowsCount(state.active_workflows.length);
         setError(null);
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load AURA');
-        }
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load AURA');
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [apiFetch, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
+    if (!isAuthenticated) return;
     const socket = new WebSocket(`${wsUrl('/ws/events')}?token=${encodeURIComponent(token)}`);
     setConnectionState('connecting');
     socket.onopen = () => setConnectionState('connected');
@@ -307,21 +257,25 @@ export function useAuraClient() {
         return;
       }
       const { agent, action } = summarizeFeedPayload(payload.data);
-      setToolFeed((current) => [
-        {
-          id: crypto.randomUUID(),
-          icon: iconForAgent(agent),
-          agent,
-          action,
-          timestamp: payload.timestamp,
-        },
-        ...current,
-      ].slice(0, 50));
+      setToolFeed((cur) => [{
+        id: crypto.randomUUID(), icon: iconForAgent(agent), agent, action, timestamp: payload.timestamp,
+      }, ...cur].slice(0, 50));
     };
-    return () => {
-      socket.close();
-    };
+    return () => { socket.close(); };
   }, [isAuthenticated, token]);
+
+  // Shared post-auth handler: store token, set user, kick off data load.
+  const _handleAuthSuccess = useCallback(
+    async (data: AuraAuthResponse, fallbackUsername: string) => {
+      const tokenValue = data.token || data.jwt_token || '';
+      setToken(tokenValue);
+      setCurrentUser(data.user_id || fallbackUsername);
+      setPassword('');
+      setAuthMode('login');
+      await refreshAll(tokenValue);
+    },
+    [refreshAll],
+  );
 
   const login = useCallback(async () => {
     setIsSubmittingAuth(true);
@@ -333,168 +287,123 @@ export function useAuraClient() {
         body: JSON.stringify({ username, password }),
       });
       if (!response.ok) {
-        throw new Error(`Authentication failed (${response.status})`);
+        const msg = await extractErrorMessage(response);
+        throw new Error(msg);
       }
       const data = await readJson<AuraAuthResponse>(response);
-      const tokenValue = data.token || data.jwt_token || '';
-      setToken(tokenValue);
-      setCurrentUser(data.user_id || username);
-      setPassword('');
-      await refreshAll(tokenValue);
+      await _handleAuthSuccess(data, username);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setIsSubmittingAuth(false);
     }
-  }, [password, refreshAll, username]);
+  }, [password, username, _handleAuthSuccess]);
 
-  const logout = useCallback(() => {
-    clearAuth();
-  }, [clearAuth]);
+  const register = useCallback(async () => {
+    setIsSubmittingAuth(true);
+    setAuthError(null);
+    try {
+      const response = await fetch(apiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!response.ok) {
+        const msg = await extractErrorMessage(response);
+        throw new Error(msg);
+      }
+      // Auto-sign-in after successful registration.
+      const data = await readJson<AuraAuthResponse>(response);
+      await _handleAuthSuccess(data, username);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Registration failed');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  }, [password, username, _handleAuthSuccess]);
+
+  const logout = useCallback(() => { clearAuth(); }, [clearAuth]);
 
   const sendMessage = useCallback(async () => {
     const text = draft.trim();
-    if (!text || isSending || !isAuthenticated) {
-      return;
-    }
+    if (!text || isSending || !isAuthenticated) return;
 
     setIsSending(true);
     setError(null);
     const userMessage = createMessage('user', text);
     const assistantId = crypto.randomUUID();
-    setMessages((current) => [
-      ...current,
-      userMessage,
-      {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        createdAt: now(),
-        isThinking: true,
-        isStreaming: true,
-      },
-    ]);
+    setMessages((cur) => [...cur, userMessage, { id: assistantId, role: 'assistant', content: '', createdAt: now(), isThinking: true, isStreaming: true }]);
     setDraft('');
+
+    const updateAssistant = (updater: (m: AuraMessage) => AuraMessage) => {
+      setMessages((cur) => cur.map((m) => m.id === assistantId ? updater(m) : m));
+    };
 
     try {
       const response = await fetch(apiUrl('/api/message'), {
         method: 'POST',
-        headers: {
-          ...authHeaders,
-          Accept: 'text/event-stream',
-        },
+        headers: { ...authHeaders, Accept: 'text/event-stream' },
         body: JSON.stringify({ text, importance }),
       });
-      if (response.status === 401) {
-        clearAuth();
-        return;
-      }
-      if (!response.ok || response.body == null) {
-        throw new Error(`Message request failed (${response.status})`);
-      }
+      if (response.status === 401) { clearAuth(); return; }
+      if (!response.ok || response.body == null) throw new Error(`Message request failed (${response.status})`);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let sawToken = false;
 
-      const updateAssistant = (updater: (message: AuraMessage) => AuraMessage) => {
-        setMessages((current) =>
-          current.map((message) => (message.id === assistantId ? updater(message) : message)),
-        );
-      };
-
       while (true) {
         const { value, done } = await reader.read();
-        if (done) {
-          break;
-        }
+        if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const segments = buffer.split('\n\n');
         buffer = segments.pop() || '';
-        const events = segments.flatMap((segment) => parseSseChunk(`${segment}\n\n`));
+        const events = segments.flatMap((seg) => parseSseChunk(`${seg}\n\n`));
         for (const event of events) {
           if (event.token) {
             sawToken = true;
-            updateAssistant((message) => ({
-              ...message,
-              content: `${message.content}${event.token || ''}`,
-              isThinking: false,
-              isStreaming: true,
-            }));
+            updateAssistant((m) => ({ ...m, content: `${m.content}${event.token || ''}`, isThinking: false, isStreaming: true }));
           }
           if (event.done) {
             const steps = event.steps || [];
-            const tools = steps.length > 0 ? steps.map((step) => summarizeStep(step)) : (event.tools_called || []).map((tool) => summarizeStep(tool));
-            updateAssistant((message) => ({
-              ...message,
-              isThinking: false,
-              isStreaming: false,
-              tools,
-            }));
+            const tools = steps.length > 0
+              ? steps.map((s) => summarizeStep(s))
+              : (event.tools_called || []).map((t) => summarizeStep(t));
+            updateAssistant((m) => ({ ...m, isThinking: false, isStreaming: false, tools }));
           }
         }
       }
 
-      if (!sawToken) {
-        updateAssistant((message) => ({
-          ...message,
-          content: message.content || 'No response returned.',
-          isThinking: false,
-          isStreaming: false,
-        }));
-      }
+      if (!sawToken) updateAssistant((m) => ({ ...m, content: m.content || 'No response returned.', isThinking: false, isStreaming: false }));
       await refreshSystem();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Message failed');
-      updateAssistant((message) => ({
-        ...message,
-        content: message.content || 'Message failed.',
-        isThinking: false,
-        isStreaming: false,
-      }));
+      updateAssistant((m) => ({ ...m, content: m.content || 'Message failed.', isThinking: false, isStreaming: false }));
     } finally {
       setIsSending(false);
     }
   }, [authHeaders, clearAuth, draft, importance, isAuthenticated, isSending, refreshSystem]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
-  }, []);
+  const toggleTheme = useCallback(() => { setTheme((t) => t === 'dark' ? 'light' : 'dark'); }, []);
 
   return {
-    token,
-    setToken,
-    username,
-    setUsername,
-    password,
-    setPassword,
-    authError,
+    token, setToken,
+    username, setUsername,
+    password, setPassword,
+    authError, setAuthError,
     isSubmittingAuth,
+    authMode, setAuthMode,
     currentUser,
     isAuthenticated,
-    messages,
-    setMessages,
-    draft,
-    setDraft,
-    importance,
-    setImportance,
-    agents,
-    toolFeed,
-    health,
-    snapshot,
-    memoryCount,
-    activeWorkflowsCount,
+    messages, setMessages,
+    draft, setDraft,
+    importance, setImportance,
+    agents, toolFeed, health, snapshot,
+    memoryCount, activeWorkflowsCount,
     connectionState,
-    isSending,
-    error,
-    theme,
-    setTheme,
-    login,
-    logout,
-    sendMessage,
-    refreshAll,
-    refreshSystem,
-    toggleTheme,
+    isSending, error, theme, setTheme,
+    login, register, logout,
+    sendMessage, refreshAll, refreshSystem, toggleTheme,
   };
 }

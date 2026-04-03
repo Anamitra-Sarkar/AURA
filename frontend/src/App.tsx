@@ -9,12 +9,8 @@ function formatTime(timestamp: string): string {
 }
 
 function statusClass(status?: string): string {
-  if (status === 'error') {
-    return 'status-error';
-  }
-  if (status === 'ready' || status === 'active') {
-    return 'status-ready';
-  }
+  if (status === 'error') return 'status-error';
+  if (status === 'ready' || status === 'active') return 'status-ready';
   return 'status-idle';
 }
 
@@ -27,9 +23,15 @@ function AgentDot({ status }: { status?: string }) {
 }
 
 function LoginScreen({ client }: { client: ReturnType<typeof useAuraClient> }) {
+  const isRegister = client.authMode === 'register';
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    await client.login();
+    if (isRegister) {
+      await client.register();
+    } else {
+      await client.login();
+    }
   };
 
   return (
@@ -39,18 +41,69 @@ function LoginScreen({ client }: { client: ReturnType<typeof useAuraClient> }) {
           <div className="brand-word">AURA</div>
           <p>Your personal AI agent</p>
         </div>
+
+        {/* Mode toggle */}
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={`auth-tab ${!isRegister ? 'active' : ''}`}
+            onClick={() => { client.setAuthMode('login'); client.setAuthError(null); }}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={`auth-tab ${isRegister ? 'active' : ''}`}
+            onClick={() => { client.setAuthMode('register'); client.setAuthError(null); }}
+          >
+            Create account
+          </button>
+        </div>
+
         <label className="field">
           <span>Username</span>
-          <input value={client.username} onChange={(event) => client.setUsername(event.target.value)} autoComplete="username" />
+          <input
+            value={client.username}
+            onChange={(e) => client.setUsername(e.target.value)}
+            autoComplete="username"
+            placeholder="e.g. anamitra"
+          />
         </label>
         <label className="field">
           <span>Password</span>
-          <input type="password" value={client.password} onChange={(event) => client.setPassword(event.target.value)} autoComplete="current-password" />
+          <input
+            type="password"
+            value={client.password}
+            onChange={(e) => client.setPassword(e.target.value)}
+            autoComplete={isRegister ? 'new-password' : 'current-password'}
+            placeholder={isRegister ? 'Choose a strong password' : 'Your password'}
+          />
         </label>
+
         {client.authError ? <p className="error-text">{client.authError}</p> : null}
-        <button type="submit" className="primary-button" disabled={client.isSubmittingAuth || !client.username || !client.password}>
-          Sign in
+
+        <button
+          type="submit"
+          className="primary-button"
+          disabled={client.isSubmittingAuth || !client.username || !client.password}
+        >
+          {client.isSubmittingAuth
+            ? (isRegister ? 'Creating account…' : 'Signing in…')
+            : (isRegister ? 'Create account' : 'Sign in')}
         </button>
+
+        {!isRegister && (
+          <p className="auth-hint">
+            No account yet?{' '}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => { client.setAuthMode('register'); client.setAuthError(null); }}
+            >
+              Create one
+            </button>
+          </p>
+        )}
       </form>
     </div>
   );
@@ -84,7 +137,7 @@ function MessageBubble({ message }: { message: AuraMessage }) {
         </div>
         {isAssistant && message.tools && message.tools.length > 0 ? (
           <div className="tools-block">
-            <button type="button" className="tools-toggle" onClick={() => setToolsOpen((current) => !current)}>
+            <button type="button" className="tools-toggle" onClick={() => setToolsOpen((v) => !v)}>
               {toolsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               Tools used ({message.tools.length})
             </button>
@@ -119,12 +172,10 @@ function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [value]);
 
   const handleKeyDown = async (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -139,14 +190,17 @@ function ChatComposer({
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          void handleKeyDown(event);
-        }}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { void handleKeyDown(e); }}
         placeholder="Ask AURA to research, plan, browse, or control the PC..."
         rows={1}
       />
-      <button type="button" className="primary-button send-button" onClick={() => void onSend()} disabled={disabled || !value.trim()}>
+      <button
+        type="button"
+        className="primary-button send-button"
+        onClick={() => void onSend()}
+        disabled={disabled || !value.trim()}
+      >
         <Send size={16} />
       </button>
     </div>
@@ -159,25 +213,19 @@ function AppShell({ client }: { client: ReturnType<typeof useAuraClient> }) {
   const feedScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!selectedAgentId && client.agents.length > 0) {
-      setSelectedAgentId(client.agents[0].id);
-    }
+    if (!selectedAgentId && client.agents.length > 0) setSelectedAgentId(client.agents[0].id);
   }, [client.agents, selectedAgentId]);
 
   useEffect(() => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [client.messages]);
 
   useEffect(() => {
-    if (feedScrollRef.current) {
-      feedScrollRef.current.scrollTop = 0;
-    }
+    if (feedScrollRef.current) feedScrollRef.current.scrollTop = 0;
   }, [client.toolFeed]);
 
   const selectedAgent = useMemo(
-    () => client.agents.find((agent) => agent.id === selectedAgentId) ?? client.agents[0] ?? null,
+    () => client.agents.find((a) => a.id === selectedAgentId) ?? client.agents[0] ?? null,
     [client.agents, selectedAgentId],
   );
 
@@ -207,7 +255,7 @@ function AppShell({ client }: { client: ReturnType<typeof useAuraClient> }) {
         <aside className="panel left-panel">
           <div className="panel-heading">
             <h2>Agents</h2>
-            <span>{client.agents.length} online cards</span>
+            <span>{client.agents.length} online</span>
           </div>
           <div className="agent-list">
             {client.agents.map((agent) => (
@@ -244,14 +292,17 @@ function AppShell({ client }: { client: ReturnType<typeof useAuraClient> }) {
             </button>
           </div>
           <div className="chat-feed" ref={chatScrollRef}>
-            {client.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {client.messages.map((m) => <MessageBubble key={m.id} message={m} />)}
             {client.isSending ? <div className="skeleton-row" /> : null}
           </div>
           <div className="composer-frame">
             {client.error ? <p className="error-text">{client.error}</p> : null}
-            <ChatComposer value={client.draft} onChange={client.setDraft} onSend={client.sendMessage} disabled={client.isSending || !client.isAuthenticated} />
+            <ChatComposer
+              value={client.draft}
+              onChange={client.setDraft}
+              onSend={client.sendMessage}
+              disabled={client.isSending || !client.isAuthenticated}
+            />
           </div>
         </section>
 
