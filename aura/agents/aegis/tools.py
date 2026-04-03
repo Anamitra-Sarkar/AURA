@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import getpass
+import getpass as _gp
 import json
 import os
 import shlex
@@ -222,7 +222,7 @@ def kill_process(name_or_pid: str, force: bool = False) -> OperationResult:
         return OperationResult(False, f"process not found: {name_or_pid}", {"target": name_or_pid})
     _append_audit(
         "kill_process",
-        {"target": name_or_pid, "pid": process.pid, "force": force, "confirmed_by": getpass.getuser()},
+        {"target": name_or_pid, "pid": process.pid, "force": force, "confirmed_by": _gp.getuser()},
         True,
         0,
     )

@@ -13,21 +13,54 @@ export interface AuraMessageResponse {
   tools_called?: string[];
 }
 
-export interface AuraWorkflow {
+export interface AuraWorkflowStep {
   id: string;
   name: string;
+  description: string;
   status: string;
-  current_step: string;
-  total_steps: number;
-  started_at: string | null;
+  tool_name: string;
+  requires_approval?: boolean;
+  retry_count?: number;
+  max_retries?: number;
+  error?: string | null;
 }
 
-export interface AuraMemorySummary {
+export interface AuraWorkflowPlan {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  steps: AuraWorkflowStep[];
+  context?: Record<string, unknown>;
+}
+
+export interface AuraMemoryRecord {
   id: string;
   key: string;
   category: string;
   preview: string;
   timestamp: string;
+  similarity_score?: number;
+}
+
+export interface AuraAgentCard {
+  id: string;
+  name: string;
+  description: string;
+  capabilities?: string[];
+  status?: string;
+}
+
+export interface AuraPhantomTask {
+  id: string;
+  name: string;
+  description: string;
+  schedule: string;
+  enabled: boolean;
+  next_run?: string | null;
+  last_run?: string | null;
 }
 
 export interface AuraSystemHealth {
@@ -45,9 +78,9 @@ export interface AuraLyraStatus {
 }
 
 export interface AuraSnapshot {
-  active_workflows: AuraWorkflow[];
-  phantom_tasks: unknown[];
-  recent_memories: AuraMemorySummary[];
+  active_workflows: AuraWorkflowPlan[];
+  phantom_tasks: AuraPhantomTask[];
+  recent_memories: AuraMemoryRecord[];
   lyra_status: AuraLyraStatus;
   system_health: AuraSystemHealth;
 }
@@ -63,4 +96,10 @@ export interface AuraWebSocketMessage {
   type: string;
   data: unknown;
   timestamp: string;
+}
+
+export interface AuraAuthResponse {
+  user_id: string;
+  token?: string;
+  jwt_token?: string;
 }

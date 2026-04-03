@@ -562,6 +562,25 @@ async def api_stream_read(item_id: str) -> Any:
     return _serialize(stream_tools.mark_item_read(item_id))
 
 
+@app.get("/api/phantom/tasks")
+async def api_phantom_tasks() -> list[dict[str, Any]]:
+    return [_serialize(task) for task in phantom_tools.list_workflows()]
+
+
+@app.post("/api/phantom/tasks/{task_id}/toggle")
+async def api_phantom_toggle_task(task_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    enabled = bool(payload.get("enabled", True))
+    result = phantom_tools.enable_task(task_id) if enabled else phantom_tools.disable_task(task_id)
+    task = next((task for task in phantom_tools.list_workflows() if getattr(task, "id", "") == task_id), None)
+    return {"success": bool(result), "task": _serialize(task) if task is not None else None}
+
+
+@app.post("/api/aegis/screenshot")
+async def api_aegis_screenshot(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    path = aegis_tools.take_screenshot(payload.get("region"), payload.get("save_path"))
+    return {"path": path}
+
+
 @app.post("/api/mosaic/synthesize")
 async def api_mosaic_synthesize(payload: dict[str, Any] = Body(...)) -> Any:
     sources = [mosaic_tools.SourceInput(**source) for source in payload.get("sources", [])]

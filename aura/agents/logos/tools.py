@@ -17,12 +17,14 @@ from pathlib import Path
 from typing import Any
 
 from aura.core.tools import ToolSpec, get_tool_registry
+from aura.core.logging import get_logger
 
 from aura.agents.atlas.models import OperationResult
 from aura.core.platform import detect_os
 
 from .models import CodePatch, Explanation, GitStatus, LintIssue, LintReport, RunResult, SuggestedFix, TestResult
 
+LOGGER = get_logger(__name__, component="logos")
 _ROUTER: Any | None = None
 _ROUTER_LOCK = threading.Lock()
 

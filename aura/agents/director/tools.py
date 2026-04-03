@@ -676,7 +676,7 @@ def register_director_tools() -> None:
         try:
             registry.register(spec)
         except ValueError:
-            pass
+            continue
 
 
 register_director_tools()

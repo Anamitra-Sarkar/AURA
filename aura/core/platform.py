@@ -1,4 +1,4 @@
-"""Cross-platform platform helpers and abstraction stubs."""
+"""Cross-platform platform helpers and adapters."""
 
 from __future__ import annotations
 

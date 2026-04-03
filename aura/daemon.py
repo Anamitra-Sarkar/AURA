@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import signal
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
@@ -188,6 +189,22 @@ async def run_forever(config_path: str | Path | None = None) -> None:
     """Run the daemon until cancelled."""
 
     state = await bootstrap(config_path)
+    logger = get_logger(__name__, component="daemon")
+    router = getattr(state, "router", None)
+    if isinstance(router, SmartRouter):
+        tracker = router.quota_tracker
+        provider_status = [
+            {
+                "name": status.name,
+                "available": status.available,
+                "requests_remaining": status.requests_remaining,
+                "tokens_remaining": status.tokens_remaining,
+            }
+            for status in tracker.get_all_status()
+        ]
+        logger.info("active-provider-status", extra={"providers": provider_status})
+    else:
+        logger.info("active-router", extra={"router": type(router).__name__ if router is not None else "none"})
     phantom_task = asyncio.create_task(phantom_loop())
     ui_task: asyncio.Task[None] | None = None
     config = getattr(state, "config", None)
@@ -212,13 +229,22 @@ async def run_forever(config_path: str | Path | None = None) -> None:
         state.hotkey.start()
     if state.tray is not None:
         state.tray.start()
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except Exception:
+            continue
     try:
-        while True:
+        while not stop_event.is_set():
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.debug("daemon-cancelled")
     finally:
         phantom_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await phantom_task
         ui_task = getattr(state, "ui_task", None)
         if ui_task is not None:
             ui_task.cancel()

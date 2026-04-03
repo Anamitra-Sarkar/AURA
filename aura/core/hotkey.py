@@ -1,4 +1,4 @@
-"""Global hotkey stub built around pynput."""
+"""Global hotkey manager built around pynput."""
 
 from __future__ import annotations
 

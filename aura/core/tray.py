@@ -1,4 +1,4 @@
-"""System tray stub built around pystray."""
+"""System tray controller built around pystray."""
 
 from __future__ import annotations
 

@@ -258,7 +258,26 @@ def remind_before(event_id: str, minutes_before: int) -> Reminder:
 def find_free_slot(duration_minutes: int, after: str, before: str) -> dict[str, str] | None:
     """Compatibility wrapper returning the next available slot."""
 
-    return {"start": after, "end": before} if duration_minutes > 0 else None
+    if duration_minutes <= 0:
+        return None
+    start_dt = dateparser.parse(after)
+    end_dt = dateparser.parse(before)
+    if start_dt is None or end_dt is None:
+        raise EchoError("invalid time range")
+    cursor = start_dt.astimezone(timezone.utc)
+    cutoff = end_dt.astimezone(timezone.utc)
+    target_delta = timedelta(minutes=duration_minutes)
+    events = sorted(list_events(after, before, limit=200), key=lambda event: event.start)
+    for event in events:
+        event_start = datetime.fromisoformat(event.start)
+        if event_start - cursor >= target_delta:
+            return {"start": cursor.isoformat(), "end": (cursor + target_delta).isoformat()}
+        event_end = datetime.fromisoformat(event.end)
+        if event_end > cursor:
+            cursor = event_end
+    if cutoff - cursor >= target_delta:
+        return {"start": cursor.isoformat(), "end": (cursor + target_delta).isoformat()}
+    return None
 
 
 def update_meeting(event_id: str, changes: dict[str, Any]) -> Event:

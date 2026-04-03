@@ -1,4 +1,4 @@
-"""Unix socket IPC stub for AURA."""
+"""Unix socket IPC server for AURA."""
 
 from __future__ import annotations
 

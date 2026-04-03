@@ -119,7 +119,7 @@ async def _detect_overlaps(task: str, maps: list[dict[str, Any]], sources: list[
         if isinstance(parsed, dict):
             return parsed
     except Exception:
-        pass
+        LOGGER.debug("mosaic-overlap-fallback", extra={"task": task}, exc_info=True)
     overlap_topics = sorted({concept for payload in maps for concept in payload.get("concepts", [])})[:5]
     overlaps = [{"topic": topic, "sources_agreeing": [source.id for source in sources[: max(1, len(sources) // 2)]], "sources_disagreeing": [], "resolution": "Combined consensus"} for topic in overlap_topics]
     contradictions = []
