@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1776067732052,
+      "tag": "0000_loving_randall_flagg",
+      "breakpoints": true
+    }
+  ]
+}
